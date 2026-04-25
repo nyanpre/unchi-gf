@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Supabase Corrected</title>
+    <title>UNCHI GF: Perfect Sync</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,9 +30,23 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
-// --- 【重要】画像から取得した正しいURLに修正 ---
+// --- 確認済みの正しい接続情報 ---
 const SUPABASE_URL = 'https://lptcprnbkfvptdaaztwi.supabase.co'; 
 const SUPABASE_KEY = 'sb_publishable_WTA3ypGwzHGUAtLkSllJvA_EIUDAa1v';
+
+const BASICS = [
+    { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
+    { name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0 },
+    { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
+];
+const RANDOM_POOL = [
+    { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0, weight: 20 },
+    { name: "きばる", atk: 20, mp: -1, acc: 75, heal: 0, mpRec: 0, multi: 2, weight: 20 },
+    { name: "宿便", atk: 50, mp: -3, acc: 75, heal: 0, mpRec: 0, weight: 10 },
+    { name: "ペーパー補充", atk: 0, mp: 0, acc: 100, heal: 0, mpRec: 3, weight: 30 },
+    { name: "野グソ", atk: 20, mp: 0, acc: 100, heal: 0, mpRec: 2, weight: 15 },
+    { name: "しょんべん", atk: 50, mp: -2, acc: 100, heal: 20, mpRec: 0, weight: 5 }
+];
 
 function App() {
     const [sb, setSb] = useState(null);
@@ -48,24 +62,13 @@ function App() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isOnlineMode, setIsOnlineMode] = useState(false);
 
-    const channelRef = useRef(null);
+    // 通信用の参照
+    const channelRef = useRef(null);         // 個別の部屋用（ゲーム進行用）
+    const lobbyChannelRef = useRef(null);    // ロビー用（部屋の宣伝用）
     const myId = useRef(Math.random().toString(36).substring(7));
     const isHost = useRef(false);
 
-    const BASICS = [
-        { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
-        { name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0 },
-        { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
-    ];
-    const RANDOM_POOL = [
-        { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0, weight: 20 },
-        { name: "きばる", atk: 20, mp: -1, acc: 75, heal: 0, mpRec: 0, multi: 2, weight: 20 },
-        { name: "宿便", atk: 50, mp: -3, acc: 75, heal: 0, mpRec: 0, weight: 10 },
-        { name: "ペーパー補充", atk: 0, mp: 0, acc: 100, heal: 0, mpRec: 3, weight: 30 },
-        { name: "野グソ", atk: 20, mp: 0, acc: 100, heal: 0, mpRec: 2, weight: 15 },
-        { name: "しょんべん", atk: 50, mp: -2, acc: 100, heal: 20, mpRec: 0, weight: 5 }
-    ];
-
+    // Supabase初期化
     useEffect(() => {
         const init = () => {
             if (window.supabase) {
@@ -77,31 +80,54 @@ function App() {
         init();
     }, []);
 
-    useEffect(() => {
-        if (!sb) return;
-        const lobbyChannel = sb.channel('unchi-lobby')
-            .on('presence', { event: 'sync' }, () => {
-                const state = lobbyChannel.presenceState();
-                const activeRooms = {};
-                Object.values(state).forEach(presences => {
-                    presences.forEach(p => { if (p.isHost) activeRooms[p.hostId] = p; });
-                });
-                setRooms(activeRooms);
-            }).subscribe();
-        return () => { lobbyChannel.unsubscribe(); };
-    }, [sb]);
-
     const triggerEffect = (id, val, type) => {
         const key = Math.random();
         setEffects(prev => [...prev, { id, val, type, key }]);
         setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
     };
 
+    // --- 修正: ロビー機能（全員が聞き、ホストがここでPresenceを発する） ---
+    useEffect(() => {
+        if (!sb) return;
+        
+        // ロビーチャンネルに自分用のキーを設定して参加
+        const lobbyChannel = sb.channel('unchi-lobby', { 
+            config: { presence: { key: myId.current } } 
+        });
+        lobbyChannelRef.current = lobbyChannel;
+
+        lobbyChannel
+            .on('presence', { event: 'sync' }, () => {
+                const state = lobbyChannel.presenceState();
+                const activeRooms = {};
+                Object.values(state).forEach(presences => {
+                    presences.forEach(p => { 
+                        if (p.isHost) activeRooms[p.hostId] = p; 
+                    });
+                });
+                setRooms(activeRooms);
+            }).subscribe();
+            
+        return () => { lobbyChannel.unsubscribe(); };
+    }, [sb]);
+
+    const refreshLobby = () => {
+        setIsRefreshing(true);
+        setTimeout(() => setIsRefreshing(false), 1200);
+    };
+
+    // --- 修正: 部屋を作る（ロビーに看板を立てる） ---
     const handleCreateRoom = async () => {
         if (!sb) return alert("接続準備中...");
-        setIsOnlineMode(true); isHost.current = true;
-        const channel = sb.channel(`room-${myId.current}`, { config: { presence: { key: myId.current } } });
+        setIsOnlineMode(true); 
+        isHost.current = true;
+        
+        if (channelRef.current) sb.removeChannel(channelRef.current);
+
+        // ゲーム進行用の個別チャンネル（ここではPresence不要）
+        const channel = sb.channel(`room-${myId.current}`);
         channelRef.current = channel;
+
         channel
             .on('broadcast', { event: 'action' }, ({ payload }) => { if (isHost.current) processBattle(payload.aIdx, payload.cIdx, payload.tIdx); })
             .on('broadcast', { event: 'sync' }, ({ payload }) => {
@@ -123,18 +149,33 @@ function App() {
             })
             .subscribe(async (status) => {
                 if (status === 'SUBSCRIBED') {
-                    await channel.track({ isHost: true, hostName: myName, roomName: roomName || `${myName}の便所`, hostId: myId.current });
+                    // ★最重要修正: 「ロビー」チャンネルに対して部屋の情報を発信する
+                    if (lobbyChannelRef.current) {
+                        await lobbyChannelRef.current.track({ 
+                            isHost: true, 
+                            hostName: myName, 
+                            roomName: roomName || `${myName}の便所`, 
+                            hostId: myId.current 
+                        });
+                    }
+                    
                     setGameState({ players: [{ name: myName, hp: 100, mp: 5, isDead: false, hand: [], peerId: myId.current }], turn: 0, log: "参加者を待っています...", version: 0, winner: null });
                     setView('waiting');
                 }
             });
     };
 
+    // --- 部屋に入る ---
     const handleJoinRoom = (room) => {
         if (!sb) return;
-        setIsOnlineMode(true); isHost.current = false;
+        setIsOnlineMode(true); 
+        isHost.current = false;
+
+        if (channelRef.current) sb.removeChannel(channelRef.current);
+
         const channel = sb.channel(`room-${room.hostId}`);
         channelRef.current = channel;
+
         channel.on('broadcast', { event: 'sync' }, ({ payload }) => {
             setGameState(payload.state);
             if (payload.eff) triggerEffect(payload.eff.id, payload.eff.val, payload.eff.type);
@@ -147,6 +188,7 @@ function App() {
         });
     };
 
+    // --- バトルロジック ---
     const processBattle = (aIdx, cIdx, tIdx) => {
         let s = JSON.parse(JSON.stringify(gameState));
         const attacker = s.players[aIdx];
@@ -183,7 +225,11 @@ function App() {
         if (isOnlineMode && channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: s } });
     };
 
+    // --- ゲーム開始（ロビーから看板を下ろす） ---
     const startGame = () => {
+        // ゲームが始まったら他の人が入れないようにロビーから部屋を消す
+        if (lobbyChannelRef.current) lobbyChannelRef.current.untrack();
+
         const startS = { ...gameState, players: gameState.players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), version: 1, winner: null };
         setGameState(startS);
         if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: startS } });
@@ -198,8 +244,11 @@ function App() {
         setView('game');
     };
 
+    // --- 戻る処理（部屋の解散） ---
     const returnToMenu = () => {
         if (channelRef.current && sb) sb.removeChannel(channelRef.current);
+        if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); // ロビーの看板も下ろす
+        
         setGameState({ players: [], turn: 0, log: "便所へようこそ。", version: 0, winner: null });
         setView('modeSelect');
     };
@@ -236,10 +285,11 @@ function App() {
                         <div className="space-y-2">
                             <input value={myName} disabled className="w-full bg-white/5 p-3 rounded-xl text-center opacity-30" />
                             {localNames.slice(0, localPlayerCount-1).map((n, i) => (
-                                <input key={i} value={n} onChange={e => { let copy = [...localNames]; copy[i] = e.target.value; setLocalNames(copy); }} className="w-full bg-white/10 p-3 rounded-xl text-center" />
+                                <input key={i} value={n} onChange={e => { let copy = [...localNames]; copy[i] = e.target.value; setLocalNames(copy); }} className="w-full bg-white/10 p-3 rounded-xl text-center border border-transparent focus:border-yellow-500 outline-none transition-all" />
                             ))}
                         </div>
                         <button onClick={startLocalGame} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl card-shadow text-xl mt-4">開戦</button>
+                        <button onClick={() => setView('modeSelect')} className="text-white/50 text-xs mt-4">戻る</button>
                     </div>
                 </div>
             )}
@@ -254,13 +304,13 @@ function App() {
                         </button>
                     </div>
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5 text-center">
-                        <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm text-center" placeholder={`${myName}の便所`} />
-                        <button onClick={handleCreateRoom} className="w-full bg-green-600 p-3 rounded-xl font-bold card-shadow">部屋を作る</button>
+                        <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm text-center outline-none focus:border-yellow-500 border border-transparent" placeholder={`${myName}の便所`} />
+                        <button onClick={handleCreateRoom} className="w-full bg-green-600 p-3 rounded-xl font-bold card-shadow active:scale-95 transition">部屋を作る</button>
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-3">
                         {Object.values(rooms).length === 0 ? <div className="text-center py-10 opacity-30 italic">便所がありません</div> : 
                             Object.values(rooms).map(r => (
-                                <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center border border-white/5">
+                                <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:bg-white/20 border border-white/5 transition-all">
                                     <div><div className="font-bold text-yellow-500">{r.roomName}</div><div className="text-[10px] text-white/40">Host: {r.hostName}</div></div>
                                     <div className="text-xs font-bold bg-yellow-600 text-black px-4 py-2 rounded-xl shadow-sm font-bold">入る</div>
                                 </div>
@@ -284,7 +334,6 @@ function App() {
 
             {view === 'game' && (
                 <div className="flex flex-col h-full pt-2">
-                    {/* 修正：プレイヤー表示エリアの高さを確保し、確実に3〜4人並ぶように修正 */}
                     <div className="flex flex-wrap justify-center gap-2 mb-4 shrink-0 min-h-[170px] overflow-y-auto">
                         {gameState.players.map((p, i) => (
                             <div key={i} id={`p-card-${i}`} className={`w-[47%] p-2 rounded-2xl border-2 transition-all relative ${gameState.turn === i ? 'p-card-active scale-105' : 'border-transparent p-card-bg'} ${p.isDead ? 'opacity-20' : ''}`}>

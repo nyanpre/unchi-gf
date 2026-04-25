@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Team Battle Edition</title>
+    <title>UNCHI GF: Result Fixed</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,13 +16,10 @@
         .p-card-bg { background: rgba(0, 0, 0, 0.2); }
         .p-card-active { background: rgba(255, 235, 59, 0.15); border-color: #ffeb3b; }
         .bar-mp { background-color: #00b0ff; }
-        
-        /* チーム色分け */
         .team-a { border-color: #ef4444 !important; box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
         .team-b { border-color: #3b82f6 !important; box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
         .badge-a { background-color: #ef4444; }
         .badge-b { background-color: #3b82f6; }
-
         @keyframes float-up { 0% { opacity: 0; transform: translateY(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-60px); } }
         .animate-float-up { animation: float-up 1s forwards; }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
@@ -51,7 +48,7 @@ const RANDOM_POOL = [
     { name: "宿便", atk: 50, mp: -3, acc: 75, heal: 0, mpRec: 0, weight: 10 },
     { name: "ペーパー補充", atk: 0, mp: 0, acc: 100, heal: 0, mpRec: 3, weight: 30 },
     { name: "野グソ", atk: 20, mp: 0, acc: 100, heal: 0, mpRec: 2, weight: 15 },
-    { name: "しょんべん", atk: 50, mp: -2, acc: 100, heal: 20, mpRec: 0, weight: 5 }
+    { name: "しょんべん", atk: 50, mp: -3, acc: 100, heal: 20, mpRec: 0, weight: 5 } // MP3に変更
 ];
 
 function App() {
@@ -61,13 +58,11 @@ function App() {
     const [rooms, setRooms] = useState({});
     const [myName, setMyName] = useState('プレイヤー1');
     const [localPlayers, setLocalPlayers] = useState([
-        { name: 'プレイヤー2', team: 1 },
-        { name: 'プレイヤー3', team: 0 },
-        { name: 'プレイヤー4', team: 1 }
+        { name: 'プレイヤー2', team: 1 }, { name: 'プレイヤー3', team: 0 }, { name: 'プレイヤー4', team: 1 }
     ]);
-    const [myTeam, setMyTeam] = useState(0); // 0: A, 1: B
+    const [myTeam, setMyTeam] = useState(0);
     const [localPlayerCount, setLocalPlayerCount] = useState(2);
-    const [battleFormat, setBattleFormat] = useState('2p'); // '2p', '3p', '4p', '2v2'
+    const [battleFormat, setBattleFormat] = useState('2p');
     const [roomName, setRoomName] = useState('');
     const [targetOverlay, setTargetOverlay] = useState(null);
     const [effects, setEffects] = useState([]);
@@ -80,10 +75,7 @@ function App() {
     const isHost = useRef(false);
 
     useEffect(() => {
-        const init = () => {
-            if (window.supabase) setSb(window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY));
-            else setTimeout(init, 500);
-        };
+        const init = () => { if (window.supabase) setSb(window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)); else setTimeout(init, 500); };
         init();
     }, []);
 
@@ -108,7 +100,7 @@ function App() {
         setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
     };
 
-    // --- CPU思考 ---
+    // CPU思考
     useEffect(() => {
         if (gameState.winner) return;
         const activePlayer = gameState.players[gameState.turn];
@@ -119,7 +111,6 @@ function App() {
                 const card = activePlayer.hand[cardIdx];
                 let targetIdx = gameState.turn;
                 if (card.atk && !card.multi) {
-                    // チーム戦なら敵チームを狙う、個人戦なら自分以外を狙う
                     const enemies = gameState.players.filter((p, idx) => !p.isDead && idx !== gameState.turn && (gameState.battleFormat === '2v2' ? p.team !== activePlayer.team : true));
                     if (enemies.length > 0) targetIdx = gameState.players.indexOf(enemies[Math.floor(Math.random() * enemies.length)]);
                 }
@@ -129,22 +120,19 @@ function App() {
         }
     }, [gameState.turn, gameState.winner]);
 
-    // --- 通信処理 ---
     const handleCreateRoom = async () => {
-        if (!sb) return alert("接続準備中...");
+        if (!sb) return alert("準備中...");
         setMode('online'); isHost.current = true;
         const channel = sb.channel(`room-${myId.current}`);
         channelRef.current = channel;
-        channel
-            .on('broadcast', { event: 'action' }, ({ payload }) => { if (isHost.current) processBattle(payload.aIdx, payload.cIdx, payload.tIdx); })
+        channel.on('broadcast', { event: 'action' }, ({ payload }) => { if (isHost.current) processBattle(payload.aIdx, payload.cIdx, payload.tIdx); })
             .on('broadcast', { event: 'sync' }, ({ payload }) => {
                 if (!isHost.current) {
                     setGameState(payload.state);
                     if (payload.eff) triggerEffect(payload.eff.id, payload.eff.val, payload.eff.type);
                     if (payload.state.version === 1 && view !== 'game') setView('game');
                 }
-            })
-            .on('broadcast', { event: 'join' }, ({ payload }) => {
+            }).on('broadcast', { event: 'join' }, ({ payload }) => {
                 if (isHost.current) {
                     setGameState(prev => {
                         const nextP = [...prev.players, { name: payload.name, hp: 100, mp: 5, isDead: false, hand: [], peerId: payload.id, team: payload.team }];
@@ -153,8 +141,7 @@ function App() {
                         return nextS;
                     });
                 }
-            })
-            .on('broadcast', { event: 'team_change' }, ({ payload }) => {
+            }).on('broadcast', { event: 'team_change' }, ({ payload }) => {
                 if (isHost.current) {
                     setGameState(prev => {
                         const nextP = prev.players.map(p => p.peerId === payload.id ? { ...p, team: payload.team } : p);
@@ -163,12 +150,9 @@ function App() {
                         return nextS;
                     });
                 }
-            })
-            .subscribe(async (status) => {
+            }).subscribe(async (status) => {
                 if (status === 'SUBSCRIBED') {
-                    if (lobbyChannelRef.current) {
-                        await lobbyChannelRef.current.track({ isHost: true, hostName: myName, roomName: roomName || `${myName}の便所`, hostId: myId.current, format: battleFormat });
-                    }
+                    if (lobbyChannelRef.current) await lobbyChannelRef.current.track({ isHost: true, hostName: myName, roomName: roomName || `${myName}の便所`, hostId: myId.current, format: battleFormat });
                     setGameState({ players: [{ name: myName, hp: 100, mp: 5, isDead: false, hand: [], peerId: myId.current, team: myTeam }], turn: 0, log: "参加者を待っています...", version: 0, winner: null, battleFormat: battleFormat });
                     setView('waiting');
                 }
@@ -183,26 +167,7 @@ function App() {
             setGameState(payload.state);
             if (payload.eff) triggerEffect(payload.eff.id, payload.eff.val, payload.eff.type);
             if (payload.state.version === 1) setView('game');
-        }).subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                channel.send({ type: 'broadcast', event: 'join', payload: { name: myName, id: myId.current, team: myTeam } });
-                setView('waiting');
-            }
-        });
-    };
-
-    const changeOnlineTeam = (newTeam) => {
-        setMyTeam(newTeam);
-        if (!isHost.current && channelRef.current) {
-            channelRef.current.send({ type: 'broadcast', event: 'team_change', payload: { id: myId.current, team: newTeam } });
-        } else if (isHost.current) {
-            setGameState(prev => {
-                const nextP = prev.players.map(p => p.peerId === myId.current ? { ...p, team: newTeam } : p);
-                const nextS = { ...prev, players: nextP, version: prev.version + 1 };
-                channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: nextS } });
-                return nextS;
-            });
-        }
+        }).subscribe((status) => { if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'join', payload: { name: myName, id: myId.current, team: myTeam } }); setView('waiting'); } });
     };
 
     const processBattle = (aIdx, cIdx, tIdx) => {
@@ -221,27 +186,21 @@ function App() {
                 const rIdx = s.players.indexOf(target);
                 if (Math.random()*100 <= card.acc) {
                     s.players[rIdx].hp -= card.atk; log += `<br>→${target.name}に${card.atk}ダメ`;
-                    triggerEffect(rIdx, card.atk, 'dmg');
-                    if(s.players[rIdx].hp <= 0) s.players[rIdx].isDead = true;
+                    triggerEffect(rIdx, card.atk, 'dmg'); if(s.players[rIdx].hp <= 0) s.players[rIdx].isDead = true;
                 } else { log += `<br>→${target.name}にはスカしっぺ`; triggerEffect(rIdx, 0, 'dmg'); }
             }
         } else {
             if (Math.random()*100 <= card.acc) {
-                if(card.atk) { 
-                    s.players[tIdx].hp -= card.atk; log += `${s.players[tIdx].name}に${card.atk}ダメ`; 
-                    triggerEffect(tIdx, card.atk, 'dmg'); 
-                    if(s.players[tIdx].hp <= 0) s.players[tIdx].isDead = true;
-                }
+                if(card.atk) { s.players[tIdx].hp -= card.atk; log += `${s.players[tIdx].name}に${card.atk}ダメ`; triggerEffect(tIdx, card.atk, 'dmg'); if(s.players[tIdx].hp <= 0) s.players[tIdx].isDead = true; }
                 if(card.heal) { attacker.hp = Math.min(100, attacker.hp + card.heal); log += `HP${card.heal}回復`; triggerEffect(aIdx, card.heal, 'heal'); }
             } else { if(card.atk) triggerEffect(tIdx, 0, 'dmg'); log += `外れた！`; }
         }
 
-        // 勝利判定ロジック
+        // 判定
         if (s.battleFormat === '2v2') {
             const teamADead = s.players.filter(p => p.team === 0 && !p.isDead).length === 0;
             const teamBDead = s.players.filter(p => p.team === 1 && !p.isDead).length === 0;
-            if (teamADead) s.winner = "チームB";
-            else if (teamBDead) s.winner = "チームA";
+            if (teamADead) s.winner = "Bチーム"; else if (teamBDead) s.winner = "Aチーム";
         } else {
             const alive = s.players.filter(p => !p.isDead);
             if (alive.length === 1) s.winner = alive[0].name;
@@ -257,197 +216,97 @@ function App() {
         if (mode === 'online' && channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: s } });
     };
 
-    const startGame = () => {
-        if (lobbyChannelRef.current) lobbyChannelRef.current.untrack();
-        const startS = { ...gameState, players: gameState.players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), version: 1, winner: null };
-        setGameState(startS);
-        if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: startS } });
-        setView('game');
-    };
-
-    const startLocalGame = () => {
-        setMode('local');
-        const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat);
-        const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: myTeam, peerId: 'local0' }];
-        for (let i = 0; i < count - 1; i++) {
-            players.push({ name: localPlayers[i].name || `プレイヤー${i+2}`, hp: 100, mp: 5, isDead: false, team: localPlayers[i].team, peerId: `local${i+1}` });
-        }
-        setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), turn: 0, log: "ローカル戦開始！", version: 1, winner: null, battleFormat });
-        setView('game');
-    };
-
-    const startCPUMame = () => {
-        setMode('cpu');
-        const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat);
-        const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: 0, peerId: 'me', isCPU: false }];
-        for (let i = 1; i < count; i++) {
-            // CPUは2v2ならバランスよく振り分け
-            const cpuTeam = battleFormat === '2v2' ? (i % 2) : i; 
-            players.push({ name: `CPU_${i}`, hp: 100, mp: 5, isDead: false, team: cpuTeam, peerId: `cpu${i}`, isCPU: true });
-        }
-        setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), turn: 0, log: "CPU戦開始！", version: 1, winner: null, battleFormat });
-        setView('game');
-    };
+    const startGame = () => { if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); const startS = { ...gameState, players: gameState.players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), version: 1, winner: null }; setGameState(startS); if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: startS } }); setView('game'); };
+    const startLocalGame = () => { setMode('local'); const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat); const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: myTeam, peerId: 'local0' }]; for (let i = 0; i < count - 1; i++) { players.push({ name: localPlayers[i].name || `プレイヤー${i+2}`, hp: 100, mp: 5, isDead: false, team: localPlayers[i].team, peerId: `local${i+1}` }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), turn: 0, log: "ローカル戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
+    const startCPUMame = () => { setMode('cpu'); const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat); const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: 0, peerId: 'me', isCPU: false }]; for (let i = 1; i < count; i++) { const cpuTeam = battleFormat === '2v2' ? (i % 2) : i; players.push({ name: `CPU_${i}`, hp: 100, mp: 5, isDead: false, team: cpuTeam, peerId: `cpu${i}`, isCPU: true }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), turn: 0, log: "CPU戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
+    const returnToMenu = () => { if (channelRef.current && sb) sb.removeChannel(channelRef.current); if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); setGameState({ players: [], turn: 0, log: "便所へようこそ。", version: 0, winner: null }); setView('modeSelect'); };
 
     return (
         <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col relative overflow-hidden">
-            
             {view === 'menu' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <h1 className="text-5xl font-black text-yellow-500 mb-12 drop-shadow-lg">UNCHI GF</h1>
-                    <div className="w-full space-y-6 text-center">
-                        <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center text-xl font-bold border-2 border-white/5" maxLength="8" />
-                        <button onClick={() => setView('modeSelect')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">次へ</button>
-                    </div>
+                    <div className="w-full space-y-6 text-center"><input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center text-xl font-bold border-2 border-white/5" maxLength="8" /><button onClick={() => setView('modeSelect')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">次へ</button></div>
                 </div>
             )}
-
             {view === 'modeSelect' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
-                    <h2 className="text-2xl font-bold text-yellow-500 mb-8 font-bold">モードを選択</h2>
+                    <h2 className="text-2xl font-bold text-yellow-500 mb-8 font-bold text-center">モードを選択</h2>
                     <div className="w-full space-y-4">
                         <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-5 rounded-2xl font-bold text-xl">ローカルで遊ぶ</button>
                         <button onClick={() => setView('cpuSetup')} className="w-full bg-stone-600 p-5 rounded-2xl font-bold text-xl">CPUと戦う</button>
-                        <button onClick={() => { setRoomName(`${myName}の便所`); setView('lobby'); }} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">オンライン対戦</button>
-                        <button onClick={() => setView('menu')} className="text-white/50 text-xs mt-6 underline w-full text-center">名前を変更</button>
+                        <button onClick={() => { setRoomName(`${myName}の便所`); setView('lobby'); }} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl font-bold">オンライン対戦</button>
+                        <button onClick={() => setView('menu')} className="text-white/50 text-xs mt-6 underline w-full text-center font-bold">名前を変更</button>
                     </div>
                 </div>
             )}
-
-            {/* ローカル設定 */}
             {view === 'localSetup' && (
                 <div className="flex-1 flex flex-col items-center py-4">
-                    <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 ローカル設定</h1>
+                    <h1 className="text-2xl font-black text-yellow-500 mb-6 font-bold">💩 ローカル設定</h1>
                     <div className="w-full space-y-4 text-center">
-                        <div className="bg-white/5 p-4 rounded-xl border border-white/5">
-                            形式：
-                            <select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="bg-[#3e2723] p-2 rounded-lg ml-2 font-bold">
-                                <option value="2p">1vs1 (2人)</option>
-                                <option value="3p">1vs1vs1 (3人)</option>
-                                <option value="4p">1vs1vs1vs1 (4人)</option>
-                                <option value="2v2">2vs2 (4人チーム戦)</option>
-                            </select>
-                        </div>
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                            <div className="flex items-center gap-2">
-                                <input value={myName} disabled className="flex-1 bg-white/5 p-3 rounded-xl text-center opacity-30 font-bold" />
-                                {battleFormat === '2v2' && <button onClick={()=>setMyTeam(myTeam===0?1:0)} className={`w-20 p-3 rounded-xl font-bold ${myTeam===0?'badge-a':'badge-b'}`}>{myTeam===0?'A':'B'}</button>}
+                        <div className="bg-white/5 p-4 rounded-xl border border-white/5 font-bold">形式：<select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="bg-[#3e2723] p-2 rounded-lg ml-2"><option value="2p">1vs1 (2人)</option><option value="3p">1vs1vs1 (3人)</option><option value="4p">1vs1vs1vs1 (4人)</option><option value="2v2">チーム戦 (4人)</option></select></div>
+                        <div className="space-y-2">{Array.from({length: (battleFormat==='2v2'?4:parseInt(battleFormat))}).map((_, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                                <input value={i===0?myName:localPlayers[i-1].name} onChange={e => { if(i>0) { let c = [...localPlayers]; c[i-1].name = e.target.value; setLocalPlayers(c); } }} disabled={i===0} className={`flex-1 bg-white/10 p-3 rounded-xl text-center font-bold ${i===0?'opacity-30':''}`} />
+                                {battleFormat === '2v2' && <button onClick={()=>{ if(i===0) setMyTeam(myTeam===0?1:0); else { let c = [...localPlayers]; c[i-1].team = c[i-1].team===0?1:0; setLocalPlayers(c); } }} className={`w-20 p-3 rounded-xl font-black text-xs ${(i===0?myTeam:localPlayers[i-1].team)===0?'badge-a':'badge-b'}`}>Team {(i===0?myTeam:localPlayers[i-1].team)===0?'A':'B'}</button>}
                             </div>
-                            {Array.from({length: (battleFormat==='2v2'?4:parseInt(battleFormat)) - 1}).map((_, i) => (
-                                <div key={i} className="flex items-center gap-2">
-                                    <input value={localPlayers[i].name} onChange={e => { let c = [...localPlayers]; c[i].name = e.target.value; setLocalPlayers(c); }} className="flex-1 bg-white/10 p-3 rounded-xl text-center font-bold" placeholder={`プレイヤー${i+2}`} />
-                                    {battleFormat === '2v2' && <button onClick={()=>{ let c = [...localPlayers]; c[i].team = c[i].team===0?1:0; setLocalPlayers(c); }} className={`w-20 p-3 rounded-xl font-bold ${localPlayers[i].team===0?'badge-a':'badge-b'}`}>{localPlayers[i].team===0?'A':'B'}</button>}
-                                </div>
-                            ))}
-                        </div>
-                        <button onClick={startLocalGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl mt-4 font-black">トイレに行く</button>
-                        <button onClick={() => setView('modeSelect')} className="text-white/50 text-xs mt-4">戻る</button>
+                        ))}</div>
+                        <button onClick={startLocalGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl font-black mt-4">トイレに行く</button>
+                        <button onClick={() => setView('modeSelect')} className="text-white/50 text-xs mt-4 font-bold">戻る</button>
                     </div>
                 </div>
             )}
-
-            {/* CPU設定 */}
             {view === 'cpuSetup' && (
                 <div className="flex-1 flex flex-col items-center justify-center p-4">
-                    <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 CPU戦設定</h1>
+                    <h1 className="text-2xl font-black text-yellow-500 mb-6 font-bold">💩 CPU戦設定</h1>
                     <div className="w-full space-y-6 text-center">
-                        <div className="bg-white/5 p-6 rounded-2xl border border-white/5">
-                            形式：
-                            <select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="bg-[#3e2723] p-2 rounded-lg ml-2 font-bold">
-                                <option value="2p">1vs1 (2人)</option>
-                                <option value="3p">1vs1vs1 (3人)</option>
-                                <option value="4p">1vs1vs1vs1 (4人)</option>
-                                <option value="2v2">2vs2 (チーム戦)</option>
-                            </select>
-                        </div>
+                        <div className="bg-white/5 p-6 rounded-2xl border border-white/5 font-bold">形式：<select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="bg-[#3e2723] p-2 rounded-lg ml-2"><option value="2p">1vs1</option><option value="3p">1vs1vs1</option><option value="4p">1vs1vs1vs1</option><option value="2v2">チーム戦</option></select></div>
                         <button onClick={startCPUMame} className="w-full bg-stone-100 text-stone-900 font-bold p-5 rounded-2xl card-shadow text-2xl font-black">トイレに行く</button>
-                        <button onClick={() => setView('modeSelect')} className="text-white/50 text-xs mt-4">戻る</button>
+                        <button onClick={() => setView('modeSelect')} className="text-white/50 text-xs mt-4 font-bold">戻る</button>
                     </div>
                 </div>
             )}
-
-            {/* オンラインロビー */}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6">
-                    <div className="flex justify-between items-end mb-6">
-                        <h2 className="text-2xl font-bold text-yellow-500 font-black">便所一覧</h2>
-                        <div className="flex flex-col items-end gap-2">
-                             <div className="text-[10px] opacity-50">チーム：
-                                <button onClick={()=>setMyTeam(myTeam===0?1:0)} className={`px-2 py-0.5 rounded font-bold ${myTeam===0?'badge-a':'badge-b'}`}>{myTeam===0?'A':'B'}</button>
-                             </div>
-                            <button onClick={()=>{setIsRefreshing(true); setTimeout(()=>setIsRefreshing(false), 1000);}} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition">
-                                <span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span>
-                                <span className="font-bold">捜索</span>
-                            </button>
-                        </div>
-                    </div>
+                    <div className="flex justify-between items-end mb-6 font-black"><h2 className="text-2xl font-bold text-yellow-500">便所一覧</h2><button onClick={()=>{setIsRefreshing(true); setTimeout(()=>setIsRefreshing(false), 1000);}} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition"><span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span><span className="font-black">捜索</span></button></div>
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5 text-center">
-                        <select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="w-full bg-[#3e2723] p-2 rounded-lg mb-2 font-bold text-xs text-center">
-                            <option value="2p">形式：1vs1</option>
-                            <option value="3p">形式：1vs1vs1</option>
-                            <option value="4p">形式：1vs1vs1vs1</option>
-                            <option value="2v2">形式：2vs2チーム戦</option>
-                        </select>
-                        <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm text-center" placeholder="部屋名" />
-                        <button onClick={handleCreateRoom} className="w-full bg-green-600 p-3 rounded-xl font-bold card-shadow font-black">部屋を作る</button>
+                        <select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="w-full bg-[#3e2723] p-2 rounded-lg mb-2 font-bold text-xs text-center"><option value="2p">1vs1</option><option value="3p">1vs1vs1</option><option value="4p">1vs1vs1vs1</option><option value="2v2">チーム戦</option></select>
+                        <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm text-center font-bold" placeholder="部屋名" /><button onClick={handleCreateRoom} className="w-full bg-green-600 p-3 rounded-xl font-bold font-black">部屋を作る</button>
                     </div>
-                    <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                        {Object.values(rooms).length === 0 ? <div className="text-center py-10 opacity-30 italic font-bold text-xs">便所が見つかりません</div> : 
-                            Object.values(rooms).map(r => (
-                                <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:bg-white/20 border border-white/5 transition-all">
-                                    <div>
-                                        <div className="font-bold text-yellow-500">{r.roomName}</div>
-                                        <div className="text-[10px] text-white/40 font-bold">{r.format === '2v2' ? '2vs2' : r.format} / 主: {r.hostName}</div>
-                                    </div>
-                                    <div className="text-xs font-bold bg-yellow-600 text-black px-4 py-2 rounded-xl font-black">入る</div>
-                                </div>
-                            ))
-                        }
-                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-3">{Object.values(rooms).length === 0 ? <div className="text-center py-10 opacity-30 italic font-bold">便所がありません</div> : 
+                        Object.values(rooms).map(r => (
+                            <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:bg-white/20 border border-white/5 transition-all">
+                                <div><div className="font-bold text-yellow-500">{r.roomName}</div><div className="text-[10px] text-white/40 font-bold">{r.format === '2v2' ? 'チーム戦' : r.format} / 主: {r.hostName}</div></div>
+                                <div className="text-xs font-bold bg-yellow-600 text-black px-4 py-2 rounded-xl font-black shadow-sm">入る</div>
+                            </div>
+                        ))
+                    }</div>
                     <button onClick={()=>setView('modeSelect')} className="text-white/50 text-xs mt-4 text-center underline font-bold">戻る</button>
                 </div>
             )}
-
             {view === 'waiting' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
-                    <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5">
-                        <h2 className="text-xl font-bold mb-6 text-yellow-500 tracking-widest font-black uppercase">Waiting...</h2>
-                        <div className="space-y-3">
-                            {gameState.players.map((p,i) => (
-                                <div key={i} className="flex items-center gap-2 p-3 bg-white/5 rounded-xl border border-white/5">
-                                    <div className="flex-1 text-xl font-bold text-left">{p.name} {i===0 && '👑'}</div>
-                                    {gameState.battleFormat === '2v2' && (
-                                        <button 
-                                            disabled={mode === 'online' && p.peerId !== myId.current}
-                                            onClick={() => changeOnlineTeam(p.team === 0 ? 1 : 0)}
-                                            className={`px-3 py-1 rounded font-black text-xs ${p.team === 0 ? 'badge-a' : 'badge-b'}`}
-                                        >
-                                            Team {p.team === 0 ? 'A' : 'B'}
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                    <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5 font-bold"><h2 className="text-xl font-bold mb-6 text-yellow-500 tracking-widest font-black uppercase">Waiting...</h2>
+                        <div className="space-y-3">{gameState.players.map((p,i) => (
+                            <div key={i} className="flex items-center gap-2 p-3 bg-white/5 rounded-xl border border-white/5"><div className="flex-1 text-xl font-bold text-left font-black">{p.name} {i===0 && '👑'}</div>
+                                {gameState.battleFormat === '2v2' && <button disabled={mode === 'online' && p.peerId !== myId.current} onClick={() => { if(mode === 'online') { changeOnlineTeam(p.team === 0 ? 1 : 0); } else { setGameState(prev => { let c = [...prev.players]; c[i].team = c[i].team===0?1:0; return {...prev, players:c}; }); } }} className={`px-3 py-1 rounded font-black text-xs ${p.team === 0 ? 'badge-a' : 'badge-b'}`}>Team {p.team === 0 ? 'A' : 'B'}</button>}
+                            </div>
+                        ))}</div>
                     </div>
-                    {isHost.current ? (
-                        <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl font-black">トイレに行く</button>
-                    ) : <p className="animate-pulse text-yellow-500 font-bold font-black">主がトイレに行くのを待っています...</p>}
+                    {isHost.current ? <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl font-black">トイレに行く</button> : <p className="animate-pulse text-yellow-500 font-bold font-black">開始待ち...</p>}
                     <button onClick={returnToMenu} className="text-white/30 text-xs mt-10 underline font-bold">退出</button>
                 </div>
             )}
-
             {view === 'game' && (
                 <div className="flex flex-col h-full pt-2">
                     <div className="flex flex-wrap justify-center gap-2 mb-4 shrink-0 min-h-[170px] overflow-y-auto">
                         {gameState.players.map((p, i) => (
-                            <div key={i} id={`p-card-${i}`} className={`w-[47%] p-2 rounded-2xl border-2 transition-all relative ${gameState.turn === i ? 'p-card-active scale-105' : 'border-transparent p-card-bg'} ${p.isDead ? 'opacity-20' : ''} ${gameState.battleFormat === '2v2' ? (p.team === 0 ? 'team-a' : 'team-b') : ''}`}>
+                            <div key={i} className={`w-[47%] p-2 rounded-2xl border-2 transition-all relative ${gameState.turn === i ? 'p-card-active scale-105' : 'border-transparent p-card-bg'} ${p.isDead ? 'opacity-20' : ''} ${gameState.battleFormat === '2v2' ? (p.team === 0 ? 'team-a' : 'team-b') : ''}`}>
                                 <div className="font-bold truncate text-[10px] flex justify-between font-black"><span>{p.name}</span><span>{i===0?'👑':''}</span></div>
-                                <div className="flex justify-between text-[8px] opacity-70 font-mono font-bold"><span>HP:{p.hp}</span><span>MP:{p.mp}</span></div>
+                                <div className="flex justify-between text-[8px] opacity-70 font-mono font-bold font-black"><span>HP:{p.hp}</span><span>MP:{p.mp}</span></div>
                                 <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden"><div className="h-full bg-green-500 transition-all duration-500" style={{width:p.hp+'%'}}></div></div>
                                 <div className="h-1 bg-black/40 rounded-full mt-0.5 overflow-hidden"><div className="h-full bar-mp transition-all duration-500" style={{width:(p.mp * 10)+'%'}}></div></div>
-                                {effects.filter(e => e.id === i).map(e => (
-                                    <div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-2xl z-50 animate-float-up pointer-events-none drop-shadow-lg ${e.type === 'dmg' ? 'text-red-500' : (e.type === 'heal' ? 'text-green-400' : 'text-blue-400')}`}>{e.type === 'dmg' ? '-' : '+'}{e.val}</div>
-                                ))}
+                                {effects.filter(e => e.id === i).map(e => (<div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-2xl z-50 animate-float-up pointer-events-none drop-shadow-lg ${e.type === 'dmg' ? 'text-red-500' : (e.type === 'heal' ? 'text-green-400' : 'text-blue-400')}`}>{e.type === 'dmg' ? '-' : '+'}{e.val}</div>))}
                                 {gameState.battleFormat === '2v2' && <div className={`absolute -top-1 -left-1 text-[8px] px-1 rounded-full font-black ${p.team===0?'badge-a':'badge-b'}`}>{p.team===0?'A':'B'}</div>}
                                 {p.isCPU && !p.isDead && <div className="absolute -top-1 -right-1 bg-stone-600 text-[8px] px-1 rounded-sm border border-stone-400 font-bold">CPU</div>}
                             </div>
@@ -462,10 +321,7 @@ function App() {
                             return (
                                 <button key={i} disabled={!isMyTurn || !canPay} onClick={() => { if(c.atk && !c.multi) setTargetOverlay(i); else if (isHost.current || mode !== 'online') processBattle(gameState.turn, i, gameState.turn); else if(channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'action', payload: { aIdx: gameState.turn, cIdx: i, tIdx: gameState.turn } }); }} className={`h-28 rounded-xl flex flex-col items-center justify-center p-2 text-center card-shadow transition-all ${i<3?'bg-stone-100 text-stone-800':'bg-yellow-100 text-stone-800'} ${(!isMyTurn || !canPay)?'opacity-20 grayscale':''}`}>
                                     <div className="text-[11px] font-black leading-tight mb-1 font-black">{c.name}</div>
-                                    <div className="text-[9px] opacity-70 font-bold text-left w-full pl-1 leading-tight font-bold">
-                                        {c.name === "きばる" ? "威力: 20 × 2 (ランダム)" : (c.atk > 0 ? `威力: ${c.atk} ` : "")}
-                                        {c.heal > 0 && `回復: ${c.heal} `}{c.mpRec > 0 && `MP: +${c.mpRec} `}<br/>命中: {c.acc}%
-                                    </div>
+                                    <div className="text-[9px] opacity-70 font-bold text-left w-full pl-1 leading-tight font-bold">{c.name === "きばる" ? "威力: 20 × 2 (ランダム)" : (c.atk > 0 ? `威力: ${c.atk} ` : "")}{c.heal > 0 && `回復: ${c.heal} `}{c.mpRec > 0 && `MP: +${c.mpRec} `}<br/>命中: {c.acc}%</div>
                                     <div className="text-[9px] font-bold text-blue-700 mt-1 font-black uppercase tracking-tighter">MP: {c.mp < 0 ? Math.abs(c.mp) : '0'}</div>
                                 </button>
                             );
@@ -473,30 +329,22 @@ function App() {
                     </div>
                 </div>
             )}
-
             {targetOverlay !== null && (
-                <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
-                    <h2 className="text-xl font-bold mb-6 text-yellow-500 font-black uppercase tracking-widest">Select Target</h2>
-                    <div className="w-full space-y-3 font-bold max-h-[70vh] overflow-y-auto px-2">
-                        {gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (
-                            <button key={i} onClick={() => { if (mode !== 'online' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else if(channelRef.current) channelRef.current.send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i }); setTargetOverlay(null); }} 
-                                className={`w-full p-4 rounded-2xl text-lg active:scale-95 transition font-black border-2 ${gameState.battleFormat === '2v2' ? (p.team === 0 ? 'border-red-500 bg-red-900/40' : 'border-blue-500 bg-blue-900/40') : 'bg-yellow-600 text-black border-transparent'}`}>
-                                {p.name} {gameState.battleFormat === '2v2' ? `(Team ${p.team===0?'A':'B'})` : ''}
-                            </button>
-                        ))}
-                        <button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 text-xs font-bold underline">キャンセル</button>
-                    </div>
+                <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center animate-in fade-in"><h2 className="text-xl font-bold mb-6 text-yellow-500 font-black uppercase tracking-widest">Select Target</h2>
+                    <div className="w-full space-y-3 font-bold max-h-[70vh] overflow-y-auto px-2">{gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (<button key={i} onClick={() => { if (mode !== 'online' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else if(channelRef.current) channelRef.current.send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i }); setTargetOverlay(null); }} className={`w-full p-4 rounded-2xl text-lg active:scale-95 transition font-black border-2 ${gameState.battleFormat === '2v2' ? (p.team === 0 ? 'border-red-500 bg-red-900/40' : 'border-blue-500 bg-blue-900/40') : 'bg-yellow-600 text-black border-transparent'}`}>{p.name} {gameState.battleFormat === '2v2' ? `(Team ${p.team===0?'A':'B'})` : ''}</button>))}<button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 text-xs font-bold underline font-black">キャンセル</button></div>
                 </div>
             )}
-
             {gameState.winner && (
-                <div className="fixed inset-0 bg-black/80 z-[200] flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm animate-in zoom-in duration-500">
+                <div className="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center p-6 text-center backdrop-blur-md animate-in zoom-in duration-500">
                     <div className="text-6xl mb-4 animate-bounce">🏆</div>
                     <h2 className="text-3xl font-black text-yellow-500 mb-2 font-black uppercase italic">Victory!</h2>
-                    <p className="text-xl font-bold mb-10 bg-white/10 px-8 py-4 rounded-full border border-yellow-500/30 font-black">
-                        Winner: <span className={gameState.winner.includes('A') ? 'text-red-400' : (gameState.winner.includes('B') ? 'text-blue-400' : 'text-yellow-400')}>{gameState.winner}</span>
-                    </p>
-                    <button onClick={returnToMenu} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl font-black">メニューへ戻る</button>
+                    <p className={`text-2xl font-black mb-2 ${gameState.winner.includes('A') ? 'text-red-400' : (gameState.winner.includes('B') ? 'text-blue-400' : 'text-yellow-400')}`}>{gameState.winner}{gameState.battleFormat==='2v2'?'の勝利！':'の勝利！'}</p>
+                    {gameState.battleFormat === '2v2' && (
+                        <div className="text-sm font-bold opacity-80 mb-10 bg-white/5 px-6 py-2 rounded-full border border-white/10">
+                            Member: {gameState.players.filter(p => (gameState.winner === "Aチーム" ? p.team === 0 : p.team === 1)).map(p => p.name).join(' & ')}
+                        </div>
+                    )}
+                    <button onClick={returnToMenu} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl font-black shadow-lg">メニューへ戻る</button>
                 </div>
             )}
         </div>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Absolute Edition</title>
+    <title>UNCHI GF: Professional Edition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,6 +20,7 @@
         .card-shadow:active:not(.disabled) { box-shadow: none; transform: translateY(4px); }
         .p-card-bg { background: rgba(0, 0, 0, 0.2); }
         .p-card-active { background: rgba(255, 235, 59, 0.15); border-color: #ffeb3b; }
+        .bar-mp { background-color: #00b0ff; }
         
         @keyframes float-up { 
             0% { opacity: 0; transform: translateY(0); } 
@@ -56,10 +57,13 @@ function App() {
     const [mode, setMode] = useState('online'); 
     const [gameState, setGameState] = useState({ players: [], turn: 0, log: "便所へようこそ。", version: 0 });
     const [rooms, setRooms] = useState({});
-    const [myName, setMyName] = useState('あらい');
-    const [localNames, setLocalNames] = useState(['ひまだ', 'やまさん', 'さく']);
+    
+    // --- 名前設定（デフォルト値：プレイヤー1〜4） ---
+    const [myName, setMyName] = useState('プレイヤー1');
+    const [localNames, setLocalNames] = useState(['プレイヤー2', 'プレイヤー3', 'プレイヤー4']);
     const [localPlayerCount, setLocalPlayerCount] = useState(3);
     const [roomName, setRoomName] = useState('あらいの便所');
+    
     const [targetOverlay, setTargetOverlay] = useState(null);
     const [effects, setEffects] = useState([]);
 
@@ -90,15 +94,16 @@ function App() {
 
     const deleteRoom = () => { if (isHost.current && currentRoomId.current) gun.current.get('ugf-lobby-final-2026').get(currentRoomId.current).put(null); };
 
-    // --- ローカル設定画面 ---
+    // --- ゲーム開始（ローカル） ---
     const startLocalGame = () => {
         setMode('local'); isHost.current = true;
         const allNames = [myName, ...localNames].slice(0, localPlayerCount);
-        const initPlayers = allNames.map(name => ({ name: name || "名無し", hp: 100, mp: 5, isDead: false, hand: [...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)], peerId: 'local' }));
+        const initPlayers = allNames.map(name => ({ name, hp: 100, mp: 5, isDead: false, hand: [...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)], peerId: 'local' }));
         setGameState({ players: initPlayers, turn: 0, log: "ローカル戦開始！", version: 1 });
         setView('game');
     };
 
+    // --- 通信処理 ---
     const handleCreateRoom = async () => {
         setMode('online');
         const pid = `ugf-h-${Math.random().toString(36).substring(7)}`;
@@ -186,32 +191,28 @@ function App() {
         <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col">
             {view === 'menu' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
-                    <h1 className="text-5xl font-black text-yellow-500 mb-12 drop-shadow-lg">UNCHI GF</h1>
+                    <h1 className="text-5xl font-black text-yellow-500 mb-8 drop-shadow-lg">UNCHI GF</h1>
                     <div className="w-full space-y-4 text-center">
-                        <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-4 rounded-2xl font-bold hover:bg-white/20 transition">ローカルで遊ぶ</button>
+                        <div className="mb-4">
+                            <p className="text-sm mb-1 text-white/50">自分の名前を入力</p>
+                            <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center" placeholder="プレイヤー1" />
+                        </div>
+                        <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-4 rounded-2xl font-bold">ローカルで遊ぶ</button>
                         <button onClick={() => setView('lobby')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">オンライン対戦</button>
                     </div>
                 </div>
             )}
 
-            {/* --- ローカル設定画面 (絶対に変えない画面) --- */}
             {view === 'localSetup' && (
                 <div id="setup-screen" className="flex-1 flex flex-col items-center justify-center p-4">
                     <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 ローカル設定</h1>
                     <div className="w-full space-y-4 text-center">
-                        <div>
-                            人数：
-                            <select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-white/10 p-2 rounded-lg ml-2">
-                                <option value="2">2人</option>
-                                <option value="3">3人</option>
-                                <option value="4">4人</option>
-                            </select>
-                        </div>
+                        <div>人数：<select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-white/10 p-2 rounded-lg ml-2"><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option></select></div>
                         <div className="space-y-2">
-                            <input value={myName} onChange={e => setMyName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player1" />
-                            <input value={localNames[0]} onChange={e => setLocalNames([e.target.value, localNames[1], localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player2" />
-                            {localPlayerCount >= 3 && <input value={localNames[1]} onChange={e => setLocalNames([localNames[0], e.target.value, localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player3" />}
-                            {localPlayerCount >= 4 && <input value={localNames[2]} onChange={e => setLocalNames([localNames[0], localNames[1], e.target.value])} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player4" />}
+                            <input value={myName} onChange={e => setMyName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-center" />
+                            <input value={localNames[0]} onChange={e => setLocalNames([e.target.value, localNames[1], localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" />
+                            {localPlayerCount >= 3 && <input value={localNames[1]} onChange={e => setLocalNames([localNames[0], e.target.value, localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" />}
+                            {localPlayerCount >= 4 && <input value={localNames[2]} onChange={e => setLocalNames([localNames[0], localNames[1], e.target.value])} className="w-full bg-white/10 p-3 rounded-xl text-center" />}
                         </div>
                         <button onClick={startLocalGame} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl card-shadow text-xl">開戦</button>
                         <button onClick={() => setView('menu')} className="text-white/50 text-sm">戻る</button>
@@ -225,7 +226,7 @@ function App() {
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 flex gap-2"><input value={roomName} onChange={e=>setRoomName(e.target.value)} className="flex-1 bg-white/10 p-3 rounded-xl text-sm" placeholder="部屋名" /><button onClick={handleCreateRoom} className="bg-green-600 px-6 py-2 rounded-xl font-bold">作成</button></div>
                     <div className="flex-1 overflow-y-auto space-y-3">
                         {Object.values(rooms).filter(r=>r).length === 0 && <p className="text-center text-white/30 py-10">稼働中の便所はありません</p>}
-                        {Object.values(rooms).map(r => r && (<div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5 hover:bg-white/10"><div><div className="font-bold text-yellow-500">{r.name}</div><div className="text-[10px] text-white/40">主: {r.host}</div></div><div className="text-xs font-bold bg-yellow-600 text-black px-3 py-1 rounded-full">参加</div></div>))}
+                        {Object.values(rooms).map(r => r && (<div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5"><div><div className="font-bold text-yellow-500">{r.name}</div><div className="text-[10px] text-white/40">主: {r.host}</div></div><div className="text-xs font-bold bg-yellow-600 text-black px-3 py-1 rounded-full">参加</div></div>))}
                     </div>
                 </div>
             )}
@@ -243,8 +244,9 @@ function App() {
                         {gameState.players.map((p, i) => (
                             <div key={i} id={`p-card-${i}`} className={`p-3 rounded-2xl border-2 transition-all relative ${gameState.turn === i ? 'p-card-active scale-105' : 'border-transparent p-card-bg'} ${p.isDead ? 'opacity-20' : ''}`}>
                                 <div className="font-bold truncate text-sm flex justify-between"><span>{p.name}</span><span>{i===0?'👑':''}</span></div>
-                                <div className="flex justify-between text-[10px] mt-1 opacity-70"><span>HP:{p.hp}</span><span>MP:{p.mp}</span></div>
-                                <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden"><div className="h-full bg-green-500 transition-all duration-500" style={{width:p.hp+'%'}}></div></div>
+                                <div className="flex justify-between text-[10px] mt-1 opacity-70 font-mono"><span>HP:{p.hp}</span><span>MP:{p.mp}</span></div>
+                                <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden"><div className="h-full bg-green-500 transition-all" style={{width:p.hp+'%'}}></div></div>
+                                <div className="h-1 bg-black/40 rounded-full mt-0.5 overflow-hidden"><div className="h-full bar-mp transition-all" style={{width:(p.mp * 10)+'%'}}></div></div>
                                 {effects.filter(e => e.id === i).map(e => (
                                     <div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-3xl z-50 animate-float-up pointer-events-none drop-shadow-lg ${e.type === 'dmg' ? 'text-red-500' : (e.type === 'heal' ? 'text-green-400' : 'text-blue-400')}`}>
                                         {e.type === 'dmg' ? '-' : '+'}{e.val}

@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Golden Spin Edition</title>
+    <title>UNCHI GF: Supabase Final</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         .bg-toilet { 
             background-color: #4e342e; 
@@ -30,12 +29,7 @@
         .animate-float-up { animation: float-up 1s forwards; }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
         .shake { animation: shake 0.2s 3; }
-
-        /* 💩回転用アニメーション */
-        @keyframes unchi-spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
+        @keyframes unchi-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-unchi-spin { animation: unchi-spin 0.6s linear infinite; }
     </style>
 </head>
@@ -44,6 +38,11 @@
 
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
+
+// --- 提供された正しい接続情報に更新 ---
+const SUPABASE_URL = 'https://unchi-gf.supabase.co'; 
+const SUPABASE_KEY = 'sb_publishable_WTA3ypGwzHGUAtLkSllJvA_EIUDAa1v';
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const BASICS = [
     { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
@@ -64,22 +63,17 @@ function App() {
     const [mode, setMode] = useState('online'); 
     const [gameState, setGameState] = useState({ players: [], turn: 0, log: "便所へようこそ。", version: 0 });
     const [rooms, setRooms] = useState({});
-    
-    // --- 名前設定（デフォルト：プレイヤー1〜4） ---
     const [myName, setMyName] = useState('プレイヤー1');
     const [localNames, setLocalNames] = useState(['プレイヤー2', 'プレイヤー3', 'プレイヤー4']);
     const [localPlayerCount, setLocalPlayerCount] = useState(3);
     const [roomName, setRoomName] = useState('');
-    
     const [targetOverlay, setTargetOverlay] = useState(null);
     const [effects, setEffects] = useState([]);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    const gun = useRef(Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-ams1.herokuapp.com/gun']));
-    const peer = useRef(null);
-    const conns = useRef([]);
+    const channelRef = useRef(null);
+    const myId = useRef(Math.random().toString(36).substring(7));
     const isHost = useRef(false);
-    const currentRoomId = useRef(null);
 
     const triggerEffect = (id, val, type) => {
         const key = Math.random();
@@ -87,89 +81,85 @@ function App() {
         setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
     };
 
+    // --- ロビー機能 (Presence) ---
     const refreshLobby = () => {
         setIsRefreshing(true);
-        setRooms({}); 
-        gun.current.get('ugf-lobby-final-2026').map().once((data, key) => {
-            if (data && Date.now() - data.ts < 30000) { 
-                setRooms(prev => ({ ...prev, [key]: data }));
-            } else {
-                setRooms(prev => { const n = {...prev}; delete n[key]; return n; });
-            }
-        });
         setTimeout(() => setIsRefreshing(false), 1200);
     };
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            if (!isRefreshing) {
-                gun.current.get('ugf-lobby-final-2026').map().once((data, key) => {
-                    if (data && Date.now() - data.ts < 30000) { 
-                        setRooms(prev => ({ ...prev, [key]: data }));
-                    } else {
-                        setRooms(prev => { const n = {...prev}; delete n[key]; return n; });
-                    }
+        const lobbyChannel = supabase.channel('unchi-lobby')
+            .on('presence', { event: 'sync' }, () => {
+                const presenceState = lobbyChannel.presenceState();
+                const activeRooms = {};
+                Object.values(presenceState).forEach(presences => {
+                    presences.forEach(p => {
+                        if (p.isHost) activeRooms[p.hostId] = p;
+                    });
                 });
-            }
-        }, 5000);
-        return () => clearInterval(timer);
-    }, [isRefreshing]);
+                setRooms(activeRooms);
+            })
+            .subscribe();
+            
+        return () => lobbyChannel.unsubscribe();
+    }, []);
 
-    const deleteRoom = () => { if (isHost.current && currentRoomId.current) gun.current.get('ugf-lobby-final-2026').get(currentRoomId.current).put(null); };
-
-    const startLocalGame = () => {
-        setMode('local'); isHost.current = true;
-        const allNames = [myName, ...localNames].slice(0, localPlayerCount);
-        const initPlayers = allNames.map(name => ({ name, hp: 100, mp: 5, isDead: false, hand: [...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)], peerId: 'local' }));
-        setGameState({ players: initPlayers, turn: 0, log: "ローカル戦開始！", version: 1 });
-        setView('game');
-    };
-
+    // --- オンライン対戦 ---
     const handleCreateRoom = async () => {
         setMode('online');
-        const pid = `ugf-h-${Math.random().toString(36).substring(7)}`;
-        if (peer.current) peer.current.destroy();
-        peer.current = new Peer(pid);
-        peer.current.on('open', () => {
-            isHost.current = true; currentRoomId.current = pid;
-            gun.current.get('ugf-lobby-final-2026').get(pid).put({ name: roomName || `${myName}の便所`, host: myName, hostId: pid, ts: Date.now() });
-            setGameState(s => ({ ...s, players: [{ name: myName, hp: 100, mp: 5, isDead: false, hand: [], peerId: pid }] }));
-            setView('waiting');
-            peer.current.on('connection', conn => { conn.on('open', () => { conns.current.push(conn); conn.on('data', data => handleData(data, conn)); }); });
-        });
+        isHost.current = true;
+        const currentRoomName = roomName || `${myName}の便所`;
+        channelRef.current = supabase.channel(`room-${myId.current}`, { config: { presence: { key: myId.current } } });
+
+        channelRef.current
+            .on('broadcast', { event: 'action' }, ({ payload }) => {
+                if (isHost.current) processBattle(payload.aIdx, payload.cIdx, payload.tIdx);
+            })
+            .on('broadcast', { event: 'sync' }, ({ payload }) => {
+                if (!isHost.current) {
+                    setGameState(payload.state);
+                    if (payload.eff) triggerEffect(payload.eff.id, payload.eff.val, payload.eff.type);
+                    if (payload.state.version === 1) setView('game');
+                }
+            })
+            .on('broadcast', { event: 'join' }, ({ payload }) => {
+                if (isHost.current) {
+                    setGameState(prev => {
+                        const nextP = [...prev.players, { name: payload.name, hp: 100, mp: 5, isDead: false, hand: [], peerId: payload.id }];
+                        const nextS = { ...prev, players: nextP, version: prev.version + 1 };
+                        channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: nextS } });
+                        return nextS;
+                    });
+                }
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await channelRef.current.track({ isHost: true, hostName: myName, roomName: currentRoomName, hostId: myId.current, ts: Date.now() });
+                    setGameState({ players: [{ name: myName, hp: 100, mp: 5, isDead: false, hand: [], peerId: myId.current }], turn: 0, log: "参加者を待っています...", version: 0 });
+                    setView('waiting');
+                }
+            });
     };
 
-    const handleJoinRoom = async (room) => {
+    const handleJoinRoom = (room) => {
         setMode('online');
-        if (peer.current) peer.current.destroy();
-        peer.current = new Peer();
-        peer.current.on('open', (myId) => {
-            isHost.current = false;
-            const conn = peer.current.connect(room.hostId);
-            conn.on('open', () => { conns.current = [conn]; conn.send({ type: 'JOIN', name: myName, peerId: myId }); conn.on('data', data => handleData(data, conn)); setView('waiting'); });
-        });
+        isHost.current = false;
+        channelRef.current = supabase.channel(`room-${room.hostId}`);
+        channelRef.current
+            .on('broadcast', { event: 'sync' }, ({ payload }) => {
+                setGameState(payload.state);
+                if (payload.eff) triggerEffect(payload.eff.id, payload.eff.val, payload.eff.type);
+                if (payload.state.version === 1) setView('game');
+            })
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    channelRef.current.send({ type: 'broadcast', event: 'join', payload: { name: myName, id: myId.current } });
+                    setView('waiting');
+                }
+            });
     };
 
-    const handleData = (data, conn) => {
-        if (isHost.current) {
-            if (data.type === 'JOIN') {
-                setGameState(prev => {
-                    const nextP = [...prev.players, { name: data.name, hp: 100, mp: 5, isDead: false, hand: [], peerId: data.peerId }];
-                    const nextS = { ...prev, players: nextP, version: prev.version + 1 };
-                    conns.current.forEach(c => c.send({ type: 'SYNC', state: nextS }));
-                    return nextS;
-                });
-            }
-            if (data.type === 'ACTION') processBattle(data.aIdx, data.cIdx, data.tIdx);
-        } else {
-            if (data.type === 'SYNC') {
-                setGameState(data.state);
-                if (data.eff) triggerEffect(data.eff.id, data.eff.val, data.eff.type);
-                if (data.state.version === 1 && view === 'waiting') setView('game');
-            }
-        }
-    };
-
+    // --- バトルロジック ---
     const processBattle = (aIdx, cIdx, tIdx) => {
         let s = JSON.parse(JSON.stringify(gameState));
         const attacker = s.players[aIdx];
@@ -177,7 +167,7 @@ function App() {
         let log = `【${attacker.name}】の${card.name}！`;
 
         attacker.mp += card.mp;
-        if (card.mpRec > 0) { attacker.mp = Math.min(10, attacker.mp + card.mpRec); triggerEffect(aIdx, card.mpRec, 'mp'); broadcastEffect(aIdx, card.mpRec, 'mp'); }
+        if (card.mpRec > 0) { attacker.mp = Math.min(10, attacker.mp + card.mpRec); triggerEffect(aIdx, card.mpRec, 'mp'); }
 
         if (card.multi) {
             for(let i=0; i<2; i++){
@@ -187,75 +177,78 @@ function App() {
                 const rIdx = s.players.indexOf(target);
                 if (Math.random()*100 <= card.acc) {
                     s.players[rIdx].hp -= card.atk; log += `<br>→${target.name}に${card.atk}ダメ`;
-                    triggerEffect(rIdx, card.atk, 'dmg'); broadcastEffect(rIdx, card.atk, 'dmg');
+                    triggerEffect(rIdx, card.atk, 'dmg');
                     if(s.players[rIdx].hp <= 0) s.players[rIdx].isDead = true;
-                } else { log += `<br>→${target.name}にはスカしっぺ`; triggerEffect(rIdx, 0, 'dmg'); broadcastEffect(rIdx, 0, 'dmg'); }
+                } else { log += `<br>→${target.name}にはスカしっぺ`; triggerEffect(rIdx, 0, 'dmg'); }
             }
         } else {
             if (Math.random()*100 <= card.acc) {
-                if(card.atk) { s.players[tIdx].hp -= card.atk; log += `${s.players[tIdx].name}に${card.atk}ダメ`; triggerEffect(tIdx, card.atk, 'dmg'); broadcastEffect(tIdx, card.atk, 'dmg'); if(s.players[tIdx].hp<=0) s.players[tIdx].isDead=true; }
-                if(card.heal) { attacker.hp = Math.min(100, attacker.hp + card.heal); log += `HP${card.heal}回復`; triggerEffect(aIdx, card.heal, 'heal'); broadcastEffect(aIdx, card.heal, 'heal'); }
-            } else { if(card.atk) { triggerEffect(tIdx, 0, 'dmg'); broadcastEffect(tIdx, 0, 'dmg'); } log += `外れた！`; }
+                if(card.atk) { s.players[tIdx].hp -= card.atk; log += `${s.players[tIdx].name}に${card.atk}ダメ`; triggerEffect(tIdx, card.atk, 'dmg'); if(s.players[tIdx].hp<=0) s.players[tIdx].isDead=true; }
+                if(card.heal) { attacker.hp = Math.min(100, attacker.hp + card.heal); log += `HP${card.heal}回復`; triggerEffect(aIdx, card.heal, 'heal'); }
+            } else { if(card.atk) triggerEffect(tIdx, 0, 'dmg'); log += `外れた！`; }
         }
 
-        attacker.hand[cIdx] = (cIdx < 3) ? {...BASICS[cIdx]} : RANDOM_POOL.sort(()=>0.5-Math.random())[0];
+        attacker.hand[cIdx] = (cIdx < 3) ? {...BASICS[cIdx]} : RANDOM_POOL[Math.floor(Math.random()*RANDOM_POOL.length)];
         let next = aIdx; do { next = (next + 1) % s.players.length; } while (s.players[next].isDead);
         s.turn = next; s.log = log; s.version += 1;
         setGameState(s);
-        if (mode === 'online') conns.current.forEach(c => c.send({ type: 'SYNC', state: s }));
+        if (mode === 'online') channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: s } });
     };
 
-    const broadcastEffect = (id, val, type) => { if(mode === 'online' && isHost.current) conns.current.forEach(c => c.send({ type: 'SYNC', state: gameState, eff: {id, val, type} })); };
+    const startGame = () => {
+        const startS = { ...gameState, players: gameState.players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), version: 1 };
+        setGameState(startS);
+        channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: startS } });
+        setView('game');
+    };
 
-    const startGame = () => { deleteRoom(); const startS = { ...gameState, players: gameState.players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), version: 1 }; setGameState(startS); conns.current.forEach(c => c.send({ type: 'SYNC', state: startS })); setView('game'); };
+    const startLocalGame = () => {
+        setMode('local'); isHost.current = true;
+        const allNames = [myName, ...localNames].slice(0, localPlayerCount);
+        const initPlayers = allNames.map(name => ({ name, hp: 100, mp: 5, isDead: false, hand: [...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)], peerId: 'local' }));
+        setGameState({ players: initPlayers, turn: 0, log: "ローカル戦開始！", version: 1 });
+        setView('game');
+    };
 
     return (
         <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col">
             
-            {/* 1. 名前入力画面 */}
             {view === 'menu' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <h1 className="text-5xl font-black text-yellow-500 mb-12 drop-shadow-lg">UNCHI GF</h1>
                     <div className="w-full space-y-6 text-center">
                         <div>
                             <p className="text-sm mb-2 text-white/50 font-bold">あなたの名前を入力してください</p>
-                            <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center text-xl font-bold border-2 border-white/5" placeholder="プレイヤー1" maxLength="8" />
+                            <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center text-xl font-bold border-2 border-white/5" maxLength="8" />
                         </div>
                         <button onClick={() => setView('modeSelect')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">次へ</button>
                     </div>
                 </div>
             )}
 
-            {/* 2. モード選択画面 */}
             {view === 'modeSelect' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <h2 className="text-2xl font-bold text-yellow-500 mb-8">モードを選択</h2>
                     <div className="w-full space-y-4">
-                        <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-5 rounded-2xl font-bold text-xl hover:bg-white/20 transition">ローカルで遊ぶ</button>
+                        <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-5 rounded-2xl font-bold text-xl">ローカルで遊ぶ</button>
                         <button onClick={() => { setRoomName(`${myName}の便所`); setView('lobby'); refreshLobby(); }} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">オンライン対戦</button>
-                        <button onClick={() => setView('menu')} className="text-white/50 text-sm mt-4 w-full">戻る</button>
+                        <button onClick={() => setView('menu')} className="text-white/50 text-sm mt-4 w-full text-center">戻る</button>
                     </div>
                 </div>
             )}
 
-            {/* 3. ローカル設定画面 */}
             {view === 'localSetup' && (
                 <div className="flex-1 flex flex-col items-center justify-center p-4">
                     <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 ローカル設定</h1>
-                    <div className="w-full space-y-4 text-center">
-                        <div className="bg-white/5 p-4 rounded-xl border border-white/5 text-sm">
-                            人数：
-                            <select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-[#3e2723] p-2 rounded-lg ml-2 border border-white/20 text-white">
-                                <option value="2">2人</option>
-                                <option value="3">3人</option>
-                                <option value="4">4人</option>
-                            </select>
+                    <div className="w-full space-y-4 text-center text-sm">
+                        <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                            人数：<select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-[#3e2723] p-2 rounded-lg ml-2"><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option></select>
                         </div>
                         <div className="space-y-2">
                             <input value={myName} onChange={e => setMyName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-center" />
-                            <input value={localNames[0]} onChange={e => setLocalNames([e.target.value, localNames[1], localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" />
-                            {localPlayerCount >= 3 && <input value={localNames[1]} onChange={e => setLocalNames([localNames[0], e.target.value, localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" />}
-                            {localPlayerCount >= 4 && <input value={localNames[2]} onChange={e => setLocalNames([localNames[0], localNames[1], e.target.value])} className="w-full bg-white/10 p-3 rounded-xl text-center" />}
+                            {localNames.slice(0, localPlayerCount-1).map((n, i) => (
+                                <input key={i} value={n} onChange={e => { let copy = [...localNames]; copy[i] = e.target.value; setLocalNames(copy); }} className="w-full bg-white/10 p-3 rounded-xl text-center" />
+                            ))}
                         </div>
                         <button onClick={startLocalGame} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl card-shadow text-xl">開戦</button>
                         <button onClick={() => setView('modeSelect')} className="text-white/50 text-sm">戻る</button>
@@ -263,58 +256,43 @@ function App() {
                 </div>
             )}
 
-            {/* 4. ロビー画面（💩が回るように修正） */}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6">
                     <div className="flex justify-between items-end mb-6">
                         <h2 className="text-2xl font-bold text-yellow-500">便所一覧</h2>
-                        <button 
-                            onClick={refreshLobby} 
-                            disabled={isRefreshing}
-                            className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition card-shadow"
-                        >
-                            <span className={`text-2xl leading-none inline-block ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span>
+                        <button onClick={refreshLobby} disabled={isRefreshing} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition card-shadow">
+                            <span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span>
                             <span className="font-bold">{isRefreshing ? '捜索中...' : '便所を捜索'}</span>
                         </button>
                     </div>
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5">
-                        <p className="text-xs text-white/40 font-bold ml-1">新しい便所を設置する</p>
-                        <div className="flex gap-2">
-                            <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="flex-1 bg-white/10 p-3 rounded-xl text-sm" placeholder={`${myName}の便所`} />
-                            <button onClick={handleCreateRoom} className="bg-green-600 px-6 py-2 rounded-xl font-bold hover:bg-green-500 transition">設置</button>
-                        </div>
+                        <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm" placeholder={`${myName}の便所`} />
+                        <button onClick={handleCreateRoom} className="w-full bg-green-600 p-3 rounded-xl font-bold">部屋を作る</button>
                     </div>
-                    <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                        {Object.values(rooms).filter(r=>r).length === 0 ? (
-                            <div className="text-center py-10">
-                                <p className="text-white/30 text-sm mb-2">稼働中の便所はありません</p>
-                                <p className="text-[10px] text-white/20 italic">上の💩で再捜索してください</p>
-                            </div>
-                        ) : (
-                            Object.values(rooms).map(r => r && (
-                                <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5 hover:bg-white/20">
-                                    <div>
-                                        <div className="font-bold text-yellow-500">{r.name}</div>
-                                        <div className="text-[10px] text-white/40">主: {r.host}</div>
-                                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-3">
+                        {Object.values(rooms).length === 0 ? <p className="text-center text-white/30 py-10">稼働中の便所はありません</p> : 
+                            Object.values(rooms).map(r => (
+                                <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 border border-white/5 hover:bg-white/10">
+                                    <div><div className="font-bold text-yellow-500">{r.roomName}</div><div className="text-[10px] text-white/40">主: {r.hostName}</div></div>
                                     <div className="text-xs font-bold bg-yellow-600 text-black px-4 py-2 rounded-xl card-shadow">入る</div>
                                 </div>
                             ))
-                        )}
+                        }
                     </div>
                     <button onClick={()=>setView('modeSelect')} className="text-white/50 text-sm mt-4 text-center">戻る</button>
                 </div>
             )}
 
-            {/* 5. 待機画面 */}
             {view === 'waiting' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
-                    <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5"><h2 className="text-xl font-bold mb-6 text-yellow-500">待機中</h2>{gameState.players.map((p,i) => <div key={i} className="text-xl font-bold my-2">{p.name} {i===0 && '👑'}</div>)}</div>
-                    {isHost.current ? (<button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">開始！</button>) : <p className="animate-pulse text-yellow-500">親の開始待ち...</p>}
+                    <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5">
+                        <h2 className="text-xl font-bold mb-6 text-yellow-500">待機中</h2>
+                        {gameState.players.map((p,i) => <div key={i} className="text-xl font-bold my-2">{p.name} {i===0 && '👑'}</div>)}
+                    </div>
+                    {isHost.current ? <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">開始！</button> : <p className="animate-pulse text-yellow-500">親の開始待ち...</p>}
                 </div>
             )}
 
-            {/* 6. ゲーム画面 */}
             {view === 'game' && (
                 <div className="flex flex-col h-full pt-2">
                     <div className="grid grid-cols-2 gap-2 mb-4 shrink-0">
@@ -325,9 +303,7 @@ function App() {
                                 <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden"><div className="h-full bg-green-500 transition-all duration-500" style={{width:p.hp+'%'}}></div></div>
                                 <div className="h-1 bg-black/40 rounded-full mt-0.5 overflow-hidden"><div className="h-full bar-mp transition-all duration-500" style={{width:(p.mp * 10)+'%'}}></div></div>
                                 {effects.filter(e => e.id === i).map(e => (
-                                    <div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-3xl z-50 animate-float-up pointer-events-none drop-shadow-lg ${e.type === 'dmg' ? 'text-red-500' : (e.type === 'heal' ? 'text-green-400' : 'text-blue-400')}`}>
-                                        {e.type === 'dmg' ? '-' : '+'}{e.val}
-                                    </div>
+                                    <div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-3xl z-50 animate-float-up pointer-events-none drop-shadow-lg ${e.type === 'dmg' ? 'text-red-500' : (e.type === 'heal' ? 'text-green-400' : 'text-blue-400')}`}>{e.type === 'dmg' ? '-' : '+'}{e.val}</div>
                                 ))}
                             </div>
                         ))}
@@ -335,16 +311,12 @@ function App() {
                     <div className="bg-[#3e2723] p-4 rounded-2xl h-24 text-xs border-l-4 border-yellow-600 overflow-y-auto mb-4 shrink-0" dangerouslySetInnerHTML={{__html: gameState.log}}></div>
                     <div className="grid grid-cols-3 gap-2 overflow-y-auto pb-4">
                         {gameState.players[gameState.turn]?.hand.map((c, i) => {
-                            const isMyTurn = mode === 'local' || gameState.players[gameState.turn].peerId === peer.current?.id;
+                            const isMyTurn = mode === 'local' || gameState.players[gameState.turn].peerId === myId.current;
                             const canPay = (gameState.players[gameState.turn].mp + (c.mp<0?c.mp:0)) >= 0;
                             return (
-                                <button key={i} disabled={!isMyTurn || !canPay}
-                                    onClick={() => { if(c.atk && !c.multi) setTargetOverlay(i); else processBattle(gameState.turn, i, gameState.turn); }}
-                                    className={`h-28 rounded-xl flex flex-col items-center justify-center p-2 text-center card-shadow transition-all ${i<3?'bg-stone-100 text-stone-800':'bg-yellow-100 text-stone-800'} ${(!isMyTurn || !canPay)?'opacity-20 grayscale':''}`}>
+                                <button key={i} disabled={!isMyTurn || !canPay} onClick={() => { if(c.atk && !c.multi) setTargetOverlay(i); else if (isHost.current || mode === 'local') processBattle(gameState.turn, i, gameState.turn); else channelRef.current.send({ type: 'broadcast', event: 'action', payload: { aIdx: gameState.turn, cIdx: i, tIdx: gameState.turn } }); }} className={`h-28 rounded-xl flex flex-col items-center justify-center p-2 text-center card-shadow transition-all ${i<3?'bg-stone-100 text-stone-800':'bg-yellow-100 text-stone-800'} ${(!isMyTurn || !canPay)?'opacity-20 grayscale':''}`}>
                                     <div className="text-[11px] font-black leading-tight mb-1">{c.name}</div>
-                                    <div className="text-[9px] opacity-70 font-bold text-left w-full pl-1">
-                                        {c.atk > 0 && `威力: ${c.atk} `}{c.heal > 0 && `回復: ${c.heal} `}{c.mpRec > 0 && `MP: +${c.mpRec} `}<br/>命中: {c.acc}%
-                                    </div>
+                                    <div className="text-[9px] opacity-70 font-bold text-left w-full pl-1">{c.atk > 0 && `威力: ${c.atk} `}{c.heal > 0 && `回復: ${c.heal} `}{c.mpRec > 0 && `MP: +${c.mpRec} `}<br/>命中: {c.acc}%</div>
                                     <div className="text-[9px] font-bold text-blue-700 mt-1">消費MP: {c.mp < 0 ? Math.abs(c.mp) : '0'}</div>
                                 </button>
                             );
@@ -353,9 +325,8 @@ function App() {
                 </div>
             )}
 
-            {/* ターゲット選択 */}
             {targetOverlay !== null && (
-                <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center"><h2 className="text-xl font-bold mb-6 text-yellow-500">誰を攻撃する？</h2><div className="w-full space-y-3">{gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (<button key={i} onClick={() => { if (mode === 'local' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else conns.current[0].send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i }); setTargetOverlay(null); }} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl text-lg">{p.name}へ放つ</button>))}<button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 font-bold">戻る</button></div></div>
+                <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center"><h2 className="text-xl font-bold mb-6 text-yellow-500">誰を攻撃する？</h2><div className="w-full space-y-3">{gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (<button key={i} onClick={() => { if (mode === 'local' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else channelRef.current.send({ type: 'broadcast', event: 'action', payload: { aIdx: gameState.turn, cIdx: targetOverlay, tIdx: i } }); setTargetOverlay(null); }} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl text-lg">{p.name}へ放つ</button>))}<button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 font-bold">戻る</button></div></div>
             )}
         </div>
     );

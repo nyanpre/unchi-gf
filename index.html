@@ -3,242 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GOD FIELD: WaitingRoom</title>
+    <title>UNCHI GOD FIELD: Lobby</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
-        :root { --bg: #2d1b15; --card-base: #efebe9; --card-rand: #fff9c4; --accent: #ffc107; --mp: #00b0ff; --hp: #66bb6a; --dmg: #ff5252; }
-        body { font-family: 'Hiragino Kaku Gothic ProN', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; justify-content: center; overflow: hidden; }
-        .container { width: 100%; max-width: 500px; padding: 10px; box-sizing: border-box; position: relative; height: 100vh; display: none; }
-        
-        /* 共通ボタン・入力 */
-        .mode-btn { background: var(--accent); border: none; padding: 15px; margin: 10px; border-radius: 12px; font-weight: bold; width: 220px; font-size: 16px; cursor: pointer; box-shadow: 0 4px #b8860b; }
-        .mode-btn:active { transform: translateY(2px); box-shadow: none; }
-        input { padding: 12px; border-radius: 8px; border: none; width: 80%; margin: 5px; font-size: 16px; text-align: center; }
-
-        /* スクリーン */
-        #menu-screen, #setup-screen, #waiting-room { background: var(--bg); position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-        
-        /* 待機室リスト */
-        #member-list { background: rgba(0,0,0,0.3); padding: 20px; border-radius: 15px; width: 80%; margin: 20px 0; min-height: 150px; }
-        .member-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 18px; font-weight: bold; }
-        .member-item.host-me { color: var(--accent); }
-
-        /* ゲーム画面UI (前回同様) */
-        .player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-        .p-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; border: 2px solid transparent; position: relative; }
-        .p-card.active { border-color: var(--accent); background: rgba(255,193,7,0.1); }
-        .p-card.dead { opacity: 0.2; filter: grayscale(1); }
-        .bar-outer { background: #111; height: 6px; border-radius: 3px; margin: 4px 0; }
-        .bar-hp { height: 100%; background: var(--hp); transition: 0.5s; border-radius: 3px; }
-        .bar-mp { height: 100%; background: var(--mp); transition: 0.5s; border-radius: 3px; }
-        .log { background: rgba(0,0,0,0.4); padding: 10px; border-radius: 10px; height: 80px; overflow-y: auto; margin-bottom: 10px; font-size: 13px; border-left: 4px solid var(--accent); }
-        .hand { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-        .card { height: 105px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; padding: 5px; text-align: center; box-shadow: 0 4px #999; background: var(--card-base); color: #3e2723; font-size: 11px; }
-        .card.rand { background: var(--card-rand); }
-        .card.disabled { opacity: 0.4; filter: grayscale(1); box-shadow: none; cursor: not-allowed; }
-        
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 500; }
-        .target-btn { background: var(--accent); border: none; padding: 15px; margin: 8px; border-radius: 10px; font-weight: bold; width: 220px; font-size: 18px; }
-
-        /* エフェクト */
-        .effect-num { position: absolute; font-weight: bold; font-size: 26px; pointer-events: none; z-index: 10; text-shadow: 2px 2px 0 #000; animation: float-up 1s forwards; }
-        @keyframes float-up { 0% { opacity:0; transform: translateY(0); } 20% { opacity:1; } 100% { opacity:0; transform: translateY(-50px); } }
-        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
-        .shake { animation: shake 0.2s 3; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .unchi-float { animation: float 3s ease-in-out infinite; }
+        .bg-toilet { background-color: #2d1b15; background-image: radial-gradient(#3e2723 1px, transparent 1px); background-size: 20px 20px; }
+        .card-shadow { box-shadow: 0 4px 0 #999; }
+        .card-shadow:active:not(.disabled) { box-shadow: none; transform: translateY(4px); }
     </style>
 </head>
-<body>
+<body class="bg-toilet text-white select-none">
+    <div id="root"></div>
 
-<div id="menu-screen">
-    <h1 style="color:var(--accent); font-size: 36px; margin: 0;">💩 UNCHI</h1>
-    <p style="margin-top:0;">GOD FIELD ONLINE</p>
-    <button class="mode-btn" onclick="showSetup('local')">ローカル(この端末で遊ぶ)</button>
-    <button class="mode-btn" onclick="showSetup('online')">通信対戦(部屋を作る・入る)</button>
-</div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
 
-<div id="setup-screen" style="display:none;">
-    <h2 id="setup-title">設定</h2>
-    <div id="online-inputs" style="display:none;">
-        部屋番号 (4桁):<br><input type="number" id="room-id" placeholder="1234">
-    </div>
-    名前 (最大8文字):<br><input type="text" id="my-name" placeholder="あらい" maxlength="8">
-    <div id="local-only" style="display:none; margin-top:10px;">
-        対戦相手名:<br>
-        <input type="text" id="in1" value="ひまだ" maxlength="8">
-        <input type="text" id="in2" value="やまさん" maxlength="8">
-    </div>
-    <button class="mode-btn" id="join-btn" onclick="processJoin()">参加する</button>
-    <button onclick="location.reload()" style="background:none; border:none; color:white; cursor:pointer;">戻る</button>
-</div>
+// --- 定数データ ---
+const BASICS = [
+    { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
+    { name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0 },
+    { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
+];
+const RANDOM_POOL = [
+    { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0, weight: 20 },
+    { name: "きばる", atk: 20, mp: -1, acc: 75, heal: 0, mpRec: 0, multi: 2, weight: 20 },
+    { name: "宿便", atk: 50, mp: -3, acc: 75, heal: 0, mpRec: 0, weight: 10 },
+    { name: "ペーパー補充", atk: 0, mp: 0, acc: 100, heal: 0, mpRec: 3, weight: 30 },
+    { name: "野グソ", atk: 20, mp: 0, acc: 100, heal: 0, mpRec: 2, weight: 15 },
+    { name: "しょんべん", atk: 50, mp: -2, acc: 100, heal: 20, mpRec: 0, weight: 5 }
+];
 
-<div id="waiting-room" style="display:none;">
-    <h2 style="color:var(--accent)">便所待機室</h2>
-    <p id="room-display">ROOM: ----</p>
-    <div id="member-list"></div>
-    <p id="wait-msg">他の参加者を待っています...</p>
-    <button id="start-btn" class="mode-btn" style="display:none;" onclick="broadcastStart()">ゲーム開始宣言！</button>
-    <p style="font-size:12px; opacity:0.7;">※親が開始ボタンを押すと始まります</p>
-</div>
+// --- メインコンポーネント ---
+function App() {
+    const [view, setView] = useState('menu'); // menu, setup, joinList, waiting, game
+    const [mode, setMode] = useState('local');
+    const [myName, setMyName] = useState('あらい');
+    const [roomName, setRoomName] = useState('');
+    const [rooms, setRooms] = useState({}); // ロビーの部屋リスト
+    const [players, setPlayers] = useState([]);
+    const [turn, setTurn] = useState(0);
+    const [log, setLog] = useState('便所へようこそ。');
+    const [effects, setEffects] = useState([]);
 
-<div class="container" id="game-container">
-    <div class="player-grid" id="p-grid"></div>
-    <div class="log" id="log-box">便所へようこそ。</div>
-    <div class="hand" id="hand-view"></div>
-</div>
+    const gun = useRef(Gun(['https://gun-manhattan.herokuapp.com/gun']));
+    const peer = useRef(null);
+    const conns = useRef([]);
+    const myId = useRef(Math.random().toString(36).substring(7));
 
-<div class="overlay" id="target-ui">
-    <h2>誰に放つ？</h2>
-    <div id="target-list"></div>
-    <button onclick="closeTarget()" style="background:none; color:white; border:1px solid white; margin-top:20px; padding:10px 20px; border-radius:5px;">戻る</button>
-</div>
-
-<script>
-    // --- データ定義 ---
-    const BASICS = [
-        { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
-        { name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0 },
-        { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
-    ];
-    const RANDOM_POOL = [
-        { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0, weight: 20 },
-        { name: "きばる", atk: 20, mp: -1, acc: 75, heal: 0, mpRec: 0, multi: 2, weight: 20 },
-        { name: "宿便", atk: 50, mp: -3, acc: 75, heal: 0, mpRec: 0, weight: 10 },
-        { name: "ペーパー補充", atk: 0, mp: 0, acc: 100, heal: 0, mpRec: 3, weight: 30 },
-        { name: "野グソ", atk: 20, mp: 0, acc: 100, heal: 0, mpRec: 2, weight: 15 },
-        { name: "しょんべん", atk: 50, mp: -2, acc: 100, heal: 20, mpRec: 0, weight: 5 }
-    ];
-
-    let gameMode = 'local';
-    let players = [];
-    let turn = 0;
-    let myIndex = 0;
-    let isHost = false;
-    let peer = null;
-    let connections = [];
-    let selectedHandIdx = null;
-
-    // --- 画面遷移 ---
-    function showSetup(mode) {
-        gameMode = mode;
-        document.getElementById('menu-screen').style.display = 'none';
-        document.getElementById('setup-screen').style.display = 'flex';
-        document.getElementById('online-inputs').style.display = mode === 'online' ? 'block' : 'none';
-        document.getElementById('local-only').style.display = mode === 'local' ? 'block' : 'none';
-    }
-
-    function processJoin() {
-        const name = document.getElementById('my-name').value || "名無し";
-        if (gameMode === 'local') {
-            players = [
-                { id:0, name: name, hp: 100, mp: 5, isDead: false, hand: [] },
-                { id:1, name: document.getElementById('in1').value, hp: 100, mp: 5, isDead: false, hand: [] },
-                { id:2, name: document.getElementById('in2').value, hp: 100, mp: 5, isDead: false, hand: [] }
-            ];
-            players.forEach(p => p.hand = [...BASICS, ...drawUniqueRand(3)]);
-            launchGame();
-        } else {
-            connectOnline(name);
-        }
-    }
+    // ロビー監視
+    useEffect(() => {
+        gun.current.get('unchi-god-field-rooms').map().on((data, key) => {
+            if (data) {
+                setRooms(prev => ({ ...prev, [key]: data }));
+            } else {
+                setRooms(prev => {
+                    const newRooms = { ...prev };
+                    delete newRooms[key];
+                    return newRooms;
+                });
+            }
+        });
+    }, []);
 
     // --- 通信ロジック ---
-    function connectOnline(myName) {
-        const roomId = document.getElementById('room-id').value;
-        if (roomId.length !== 4) return alert("部屋番号は4桁です");
+    const createRoom = () => {
+        if (!roomName || !myName) return alert("部屋名と名前を入力してや");
+        const hostPeerId = `ugf-${Math.random().toString(36).substring(7)}`;
+        peer.current = new Peer(hostPeerId);
         
-        document.getElementById('setup-screen').style.display = 'none';
-        document.getElementById('waiting-room').style.display = 'flex';
-        document.getElementById('room-display').innerText = "ROOM: " + roomId;
-
-        const hostId = `unchi-room-${roomId}`;
-        peer = new Peer();
-
-        peer.on('open', () => {
-            const conn = peer.connect(hostId);
-            conn.on('open', () => {
-                isHost = false;
-                connections = [conn];
-                conn.send({ type: 'JOIN', name: myName });
-                setupClientListeners(conn);
-            });
-
-            // 誰もいなければ自分がホスト
-            setTimeout(() => {
-                if (connections.length === 0) setupHost(hostId, myName);
-            }, 1500);
+        peer.current.on('open', () => {
+            const roomData = { name: roomName, host: myName, hostId: hostPeerId, players: 1, ts: Date.now() };
+            gun.current.get('unchi-god-field-rooms').get(hostPeerId).put(roomData);
+            
+            setPlayers([{ name: myName.substring(0,8), hp: 100, mp: 5, isDead: false, hand: [] }]);
+            setView('waiting');
+            setupHostListeners();
         });
-    }
+    };
 
-    function setupHost(hostId, myName) {
-        if(peer) peer.destroy();
-        peer = new Peer(hostId);
-        isHost = true;
-        myIndex = 0;
-        players = [{ id: 0, name: myName, hp: 100, mp: 5, isDead: false, hand: [] }];
-        
-        updateMemberUI();
-        document.getElementById('start-btn').style.display = 'block';
-        document.getElementById('wait-msg').innerText = "参加者を待っています...";
-
-        peer.on('connection', (conn) => {
+    const setupHostListeners = () => {
+        peer.current.on('connection', (conn) => {
             conn.on('data', (data) => {
-                if (data.type === 'JOIN' && players.length < 4) {
-                    const newP = { id: players.length, name: data.name, hp: 100, mp: 5, isDead: false, hand: [] };
-                    players.push(newP);
-                    connections.push(conn);
-                    // 全員に現在のメンバーリストを送信
-                    broadcast({ type: 'MEMBER_SYNC', players: players });
-                    updateMemberUI();
+                if (data.type === 'JOIN') {
+                    setPlayers(prev => {
+                        const newPlayers = [...prev, { name: data.name.substring(0,8), hp: 100, mp: 5, isDead: false, hand: [] }];
+                        conns.current.push(conn);
+                        // 全員に同期
+                        const syncData = { type: 'MEMBER_SYNC', players: newPlayers };
+                        conns.current.forEach(c => c.send(syncData));
+                        conn.send(syncData);
+                        return newPlayers;
+                    });
                 }
                 if (data.type === 'ACTION') handleAction(data);
             });
         });
-    }
+    };
 
-    function setupClientListeners(conn) {
-        conn.on('data', (data) => {
-            if (data.type === 'MEMBER_SYNC') {
-                players = data.players;
-                myIndex = players.findIndex(p => p.name === document.getElementById('my-name').value);
-                updateMemberUI();
-            }
-            if (data.type === 'START') {
-                players = data.players;
-                launchGame();
-            }
-            if (data.type === 'UPDATE') syncState(data);
+    const joinRoom = (room) => {
+        setRoomName(room.name);
+        peer.current = new Peer();
+        peer.current.on('open', () => {
+            const conn = peer.current.connect(room.hostId);
+            conn.on('open', () => {
+                conns.current = [conn];
+                conn.send({ type: 'JOIN', name: myName });
+                setupClientListeners(conn);
+                setView('waiting');
+            });
         });
-    }
+    };
 
-    function updateMemberUI() {
-        const list = document.getElementById('member-list');
-        list.innerHTML = players.map((p, i) => `
-            <div class="member-item ${i===0 ? 'host-me' : ''}">
-                ${p.name} ${i === 0 ? '(親)' : ''}
-            </div>
-        `).join('');
-    }
+    const setupClientListeners = (conn) => {
+        conn.on('data', (data) => {
+            if (data.type === 'MEMBER_SYNC') setPlayers(data.players);
+            if (data.type === 'START') {
+                setPlayers(data.players);
+                setView('game');
+            }
+            if (data.type === 'UPDATE') {
+                setPlayers(data.players);
+                setTurn(data.turn);
+                setLog(data.log);
+                if (data.eff) triggerEffect(data.eff.id, data.eff.val, data.eff.type);
+            }
+        });
+    };
 
-    function broadcastStart() {
-        if(players.length < 2) return alert("2人以上必要です");
-        players.forEach(p => p.hand = [...BASICS, ...drawUniqueRand(3)]);
-        broadcast({ type: 'START', players: players });
-        launchGame();
-    }
+    const startGame = () => {
+        if (players.length < 2) return alert("2人以上必要や");
+        // 部屋リストから削除
+        gun.current.get('unchi-god-field-rooms').get(peer.current.id).put(null);
+        
+        const initialPlayers = players.map(p => ({
+            ...p,
+            hand: [...BASICS, ...drawUniqueRand(3)]
+        }));
+        setPlayers(initialPlayers);
+        conns.current.forEach(c => c.send({ type: 'START', players: initialPlayers }));
+        setView('game');
+    };
 
-    function broadcast(data) {
-        connections.forEach(c => c.send(data));
-    }
-
-    // --- ゲーム進行 ---
-    function launchGame() {
-        document.getElementById('waiting-room').style.display = 'none';
-        document.getElementById('setup-screen').style.display = 'none';
-        document.getElementById('game-container').style.display = 'block';
-        render();
-    }
-
-    function drawUniqueRand(count) {
+    // --- ゲームロジック用ヘルパー ---
+    const drawUniqueRand = (count) => {
         let res = [], pool = [...RANDOM_POOL];
         for(let i=0; i<count; i++) {
             let total = pool.reduce((s,c)=>s+c.weight, 0);
@@ -249,160 +162,227 @@
             }
         }
         return res;
-    }
+    };
 
-    function render() {
-        const grid = document.getElementById('p-grid');
-        grid.innerHTML = players.map((p, i) => `
-            <div id="p-card-${i}" class="p-card ${i === turn ? 'active' : ''} ${p.isDead ? 'dead' : ''}">
-                <strong>${p.name}</strong><br>
-                HP:${p.hp} MP:${p.mp}
-                <div class="bar-outer"><div class="bar-hp" style="width:${p.hp}%"></div></div>
-                <div class="bar-outer"><div class="bar-mp" style="width:${p.mp*10}%"></div></div>
-            </div>
-        `).join('');
+    const triggerEffect = (id, val, type) => {
+        const key = Math.random();
+        setEffects(prev => [...prev, { id, val, type, key }]);
+        setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
+    };
 
-        const isMyTurn = (gameMode==='local') || (turn === myIndex);
-        const handView = document.getElementById('hand-view');
-        handView.innerHTML = players[turn].hand.map((c, i) => {
-            const canPay = (players[turn].mp + (c.mp<0?c.mp:0)) >= 0;
-            return `
-                <div class="card ${i>=3?'rand':''} ${isMyTurn && canPay ? '' : 'disabled'}" 
-                     onclick="${isMyTurn && canPay ? `handleCard(${i})` : ''}">
-                    <div style="font-weight:bold">${c.name}</div>
-                    <div style="font-size:9px">
-                        ${c.atk?`攻:${c.atk} `:''}${c.heal?`回:${c.heal} `:''}${c.mpRec?`MP:+${c.mpRec} `:''}<br>
-                        命中:${c.acc}% ${c.mp<0?`消費:${-c.mp}`:''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    function handleCard(idx) {
-        selectedHandIdx = idx;
-        const card = players[turn].hand[idx];
-        if(card.atk > 0 && !card.multi) openTarget();
-        else executeCard(turn);
-    }
-
-    function openTarget() {
-        document.getElementById('target-ui').style.display = 'flex';
-        document.getElementById('target-list').innerHTML = players.map((p, i) => 
-            (i !== turn && !p.isDead) ? `<button class="target-btn" onclick="executeCard(${i})">${p.name}</button>` : ''
-        ).join('');
-    }
-
-    function closeTarget() { document.getElementById('target-ui').style.display = 'none'; }
-
-    function executeCard(targetIdx) {
-        closeTarget();
-        if(gameMode === 'online' && turn === myIndex && !isHost) {
-            connections[0].send({ type: 'ACTION', cardIdx: selectedHandIdx, targetIdx: targetIdx });
-            return;
-        }
+    // --- アクション送信（ホスト側が計算） ---
+    const sendAction = (cardIdx, targetIdx) => {
+        if (peer.current && !conns.current[0]?.open && !isHostRole()) return;
         
-        const attacker = players[turn];
-        const card = attacker.hand[selectedHandIdx];
-        attacker.mp = Math.min(10, Math.max(0, attacker.mp + card.mp));
-        let log = `【${attacker.name}】の${card.name}！ `;
-
-        if(card.mpRec) {
-            attacker.mp = Math.min(10, attacker.mp + card.mpRec);
-            showEffect(turn, card.mpRec, 'mp');
+        if (isHostRole()) {
+            processBattle(players.findIndex(p => p.name === myName), cardIdx, targetIdx);
+        } else {
+            conns.current[0].send({ type: 'ACTION', cardIdx, targetIdx });
         }
+    };
 
-        if(card.multi) {
-            for(let k=0; k<2; k++) {
-                const enemies = players.filter((p, i) => !p.isDead && i !== turn);
+    const isHostRole = () => !peer.current || peer.current.id.includes('host') || players[0].name === myName;
+
+    // バトル計算（ホスト用）
+    const processBattle = (pIdx, cardIdx, targetIdx) => {
+        const attacker = players[pIdx];
+        const card = attacker.hand[cardIdx];
+        let newPlayers = JSON.parse(JSON.stringify(players));
+        let battleLog = `【${attacker.name}】の${card.name}！ `;
+
+        // MP更新
+        newPlayers[pIdx].mp = Math.min(10, Math.max(0, newPlayers[pIdx].mp + card.mp));
+
+        if (card.multi) {
+            for(let i=0; i<2; i++) {
+                const enemies = newPlayers.filter((p, idx) => !p.isDead && idx !== pIdx);
                 const enemy = enemies[Math.floor(Math.random() * enemies.length)];
-                if(Math.random()*100 <= card.acc) {
-                    enemy.hp = Math.max(0, enemy.hp - card.atk);
-                    showEffect(players.indexOf(enemy), card.atk, 'dmg');
-                    log += `<br>→ ${enemy.name}に${card.atk}ダメ！`;
-                    if(enemy.hp <= 0) enemy.isDead = true;
+                const eIdx = newPlayers.findIndex(p => p.name === enemy.name);
+                if (Math.random()*100 <= card.acc) {
+                    newPlayers[eIdx].hp = Math.max(0, newPlayers[eIdx].hp - card.atk);
+                    battleLog += `<br>→ ${enemy.name}に${card.atk}ダメ！`;
+                    triggerEffect(eIdx, card.atk, 'dmg');
+                    if(newPlayers[eIdx].hp <= 0) newPlayers[eIdx].isDead = true;
                 } else {
-                    showEffect(players.indexOf(enemy), 0, 'dmg');
-                    log += `<br>→ ${enemy.name}にはスカしっぺ`;
+                    battleLog += `<br>→ ${enemy.name}にはスカしっぺ`;
+                    triggerEffect(eIdx, 0, 'dmg');
                 }
             }
         } else {
-            if(Math.random()*100 <= card.acc) {
-                if(card.atk) {
-                    players[targetIdx].hp = Math.max(0, players[targetIdx].hp - card.atk);
-                    showEffect(targetIdx, card.atk, 'dmg');
-                    log += `${players[targetIdx].name}に${card.atk}ダメ！`;
-                    if(players[targetIdx].hp <= 0) players[targetIdx].isDead = true;
+            if (Math.random()*100 <= card.acc) {
+                if (card.atk) {
+                    newPlayers[targetIdx].hp = Math.max(0, newPlayers[targetIdx].hp - card.atk);
+                    triggerEffect(targetIdx, card.atk, 'dmg');
+                    battleLog += `${newPlayers[targetIdx].name}に${card.atk}ダメ！`;
+                    if(newPlayers[targetIdx].hp <= 0) newPlayers[targetIdx].isDead = true;
                 }
-                if(card.heal) {
-                    attacker.hp = Math.min(100, attacker.hp + card.heal);
-                    showEffect(turn, card.heal, 'heal');
-                    log += `HP${card.heal}回復！`;
+                if (card.heal) {
+                    newPlayers[pIdx].hp = Math.min(100, newPlayers[pIdx].hp + card.heal);
+                    triggerEffect(pIdx, card.heal, 'heal');
+                    battleLog += `HP${card.heal}回復！`;
                 }
             } else {
-                if(card.atk) showEffect(targetIdx, 0, 'dmg');
-                log += `外れた！`;
+                if(card.atk) triggerEffect(targetIdx, 0, 'dmg');
+                battleLog += `外れた！`;
             }
         }
-        document.getElementById('log-box').innerHTML = log;
-        drawNext(attacker);
 
-        setTimeout(() => {
-            if(checkWin()) {
-                do { turn = (turn + 1) % players.length; } while (players[turn].isDead);
-                if(isHost) broadcastUpdate(log);
-                render();
-            }
-        }, 1500);
-    }
-
-    function drawNext(p) {
-        if(selectedHandIdx < 3) p.hand[selectedHandIdx] = {...BASICS[selectedHandIdx]};
+        // 手札補充
+        if (cardIdx < 3) newPlayers[pIdx].hand[cardIdx] = {...BASICS[cardIdx]};
         else {
-            const others = p.hand.filter((_, i) => i >= 3 && i !== selectedHandIdx).map(c => c.name);
+            const others = newPlayers[pIdx].hand.filter((_, i) => i >= 3 && i !== cardIdx).map(c => c.name);
             let n; do { n = drawUniqueRand(1)[0]; } while (others.includes(n.name));
-            p.hand[selectedHandIdx] = n;
+            newPlayers[pIdx].hand[cardIdx] = n;
         }
-    }
 
-    function syncState(data) {
-        players = data.players; turn = data.turn;
-        document.getElementById('log-box').innerHTML = data.log;
-        if(data.eff) showEffect(data.eff.id, data.eff.val, data.eff.type);
-        render();
-    }
+        // ターン終了
+        let nextTurn = pIdx;
+        do { nextTurn = (nextTurn + 1) % newPlayers.length; } while (newPlayers[nextTurn].isDead);
 
-    function broadcastUpdate(log) {
-        broadcast({ type: 'UPDATE', players: players, turn: turn, log: log });
-    }
+        setPlayers(newPlayers);
+        setTurn(nextTurn);
+        setLog(battleLog);
 
-    function showEffect(pId, val, type) {
-        const card = document.getElementById(`p-card-${pId}`);
-        if(!card) return;
-        const el = document.createElement('div');
-        el.className = 'effect-num';
-        el.style.color = type==='dmg'?'var(--dmg)':(type==='heal'?'var(--hp)':'var(--mp)');
-        el.style.left='40%'; el.style.top='30%';
-        el.innerText = (type==='dmg'?'-':'+')+val;
-        card.appendChild(el);
-        if(type==='dmg' && val>0) card.classList.add('shake');
-        setTimeout(()=> { el.remove(); card.classList.remove('shake'); }, 1000);
-        if(isHost && gameMode==='online') broadcast({ type: 'UPDATE', players:players, turn:turn, log:document.getElementById('log-box').innerHTML, eff:{id:pId, val, type} });
-    }
-
-    function checkWin() {
-        const alive = players.filter(p => !p.isDead);
-        if(alive.length === 1) {
-            const m = `勝者：${alive[0].name}！`;
-            document.getElementById('log-box').innerHTML = `<strong>${m}</strong>`;
-            if(isHost) broadcastUpdate(m);
-            setTimeout(() => { alert(m); location.reload(); }, 2000);
-            return false;
+        if (conns.current.length > 0) {
+            conns.current.forEach(c => c.send({ type: 'UPDATE', players: newPlayers, turn: nextTurn, log: battleLog }));
         }
-        return true;
-    }
+    };
 
-    function handleAction(data) { selectedHandIdx = data.cardIdx; executeCard(data.targetIdx); }
+    const handleAction = (data) => {
+        const attackerIdx = turn;
+        processBattle(attackerIdx, data.cardIdx, data.targetIdx);
+    };
+
+    // --- サブコンポーネント ---
+    const TargetOverlay = ({ onSelect, onCancel }) => (
+        <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center">
+            <h2 className="text-2xl mb-6">ターゲットを選べ</h2>
+            {players.map((p, i) => (i !== turn && !p.isDead) && (
+                <button key={i} onClick={() => onSelect(i)} className="bg-yellow-500 text-black font-bold p-4 m-2 w-64 rounded-xl">
+                    {p.name}
+                </button>
+            ))}
+            <button onClick={onCancel} className="mt-8 text-gray-400">戻る</button>
+        </div>
+    );
+
+    // --- レンダリング ---
+    return (
+        <div className="max-w-md mx-auto h-screen flex flex-col p-4 relative">
+            {view === 'menu' && (
+                <div className="flex-1 flex flex-col items-center justify-center">
+                    <div className="text-6xl unchi-float mb-4">💩</div>
+                    <h1 className="text-4xl font-black text-yellow-500 mb-8">UNCHI GF</h1>
+                    <button onClick={() => setView('setup')} className="bg-yellow-500 text-black font-bold p-4 m-2 w-64 rounded-xl card-shadow">
+                        部屋を作る・入る
+                    </button>
+                    <button onClick={() => { setMode('local'); setView('game'); /* ローカル初期化略 */ }} className="bg-white/10 p-4 m-2 w-64 rounded-xl">
+                        ローカルで練習
+                    </button>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="flex-1 flex flex-col items-center justify-center space-y-4">
+                    <h2 className="text-2xl font-bold">設定</h2>
+                    <input value={myName} onChange={e => setMyName(e.target.value)} placeholder="名前 (最大8文字)" maxLength="8" className="w-full p-4 rounded-xl text-black text-center" />
+                    <div className="w-full flex space-x-2">
+                        <input value={roomName} onChange={e => setRoomName(e.target.value)} placeholder="部屋名" className="flex-1 p-4 rounded-xl text-black text-center" />
+                        <button onClick={createRoom} className="bg-yellow-500 text-black font-bold p-4 rounded-xl">作成</button>
+                    </div>
+                    <div className="w-full bg-black/30 p-4 rounded-xl min-h-[200px]">
+                        <h3 className="text-sm opacity-50 mb-2">公開中の部屋</h3>
+                        {Object.values(rooms).map((r, i) => (
+                            <div key={i} onClick={() => joinRoom(r)} className="bg-white/10 p-3 mb-2 rounded-lg flex justify-between cursor-pointer hover:bg-white/20">
+                                <span>{r.name}</span>
+                                <span className="text-xs text-yellow-500">主: {r.host}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <button onClick={() => setView('menu')} className="text-gray-400">戻る</button>
+                </div>
+            )}
+
+            {view === 'waiting' && (
+                <div className="flex-1 flex flex-col items-center justify-center">
+                    <h2 className="text-2xl text-yellow-500 mb-4">🚽 便所待機中</h2>
+                    <div className="bg-black/40 w-full rounded-2xl p-6 space-y-4">
+                        {players.map((p, i) => (
+                            <div key={i} className="text-xl font-bold border-b border-white/10 pb-2">
+                                {i+1}. {p.name} {i===0 && <span className="text-xs bg-red-500 px-2 py-1 rounded ml-2">親</span>}
+                            </div>
+                        ))}
+                    </div>
+                    {isHostRole() ? (
+                        <button onClick={startGame} className="bg-yellow-500 text-black font-bold p-4 mt-8 w-full rounded-xl card-shadow">
+                            ゲーム開始！
+                        </button>
+                    ) : (
+                        <p className="mt-8 animate-pulse">親が開始するのを待っています...</p>
+                    )}
+                </div>
+            )}
+
+            {view === 'game' && (
+                <div className="flex flex-col h-full">
+                    {/* プレイヤーグリッド */}
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                        {players.map((p, i) => (
+                            <div key={i} id={`p-card-${i}`} className={`p-4 rounded-xl border-2 transition-all relative ${turn === i ? 'border-yellow-500 bg-yellow-500/10' : 'border-transparent bg-white/5'} ${p.isDead ? 'opacity-30 grayscale' : ''}`}>
+                                <div className="font-bold truncate">{p.name}</div>
+                                <div className="text-xs">HP:{p.hp} MP:{p.mp}</div>
+                                <div className="h-1 bg-black rounded-full mt-1 overflow-hidden">
+                                    <div className="h-full bg-green-500 transition-all" style={{width: p.hp+'%'}}></div>
+                                </div>
+                                {effects.filter(e => e.id === i).map(e => (
+                                    <div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-3xl z-10 animate-bounce ${e.type==='dmg'?'text-red-500':'text-green-500'}`}>
+                                        {e.type==='dmg'?'-':'+'}{e.val}
+                                    </div>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* ログ */}
+                    <div className="bg-black/40 p-4 rounded-xl h-24 overflow-y-auto text-sm border-l-4 border-yellow-500 mb-4" dangerouslySetInnerHTML={{__html: log}}></div>
+
+                    {/* 手札 */}
+                    <div className="grid grid-cols-3 gap-2">
+                        {players[turn]?.hand.map((c, i) => {
+                            const isMyTurn = players[turn].name === myName;
+                            const canPay = (players[turn].mp + (c.mp<0?c.mp:0)) >= 0;
+                            return (
+                                <div key={i} 
+                                    onClick={() => {
+                                        if(!isMyTurn || !canPay) return;
+                                        if(c.atk > 0 && !c.multi) setView('targetSelect_'+i);
+                                        else sendAction(i, turn);
+                                    }}
+                                    className={`h-28 rounded-lg flex flex-col items-center justify-center p-2 text-center card-shadow ${i<3?'bg-white text-black':'bg-yellow-100 text-black'} ${(!isMyTurn || !canPay)?'opacity-40 grayscale':''}`}>
+                                    <div className="text-xs font-bold leading-tight">{c.name}</div>
+                                    <div className="text-[10px] mt-1">
+                                        {c.atk?`攻:${c.atk} `:''}{c.heal?`回:${c.heal} `:''}{c.mpRec?`MP:+${c.mpRec}`:''}
+                                    </div>
+                                    <div className="text-[9px] mt-1 font-bold text-blue-600">{c.mp < 0 ? `消費:${-c.mp}` : '消費0'}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {view.startsWith('targetSelect_') && (
+                        <TargetOverlay 
+                            onSelect={(t) => { sendAction(parseInt(view.split('_')[1]), t); setView('game'); }}
+                            onCancel={() => setView('game')} 
+                        />
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
 </script>
 </body>
 </html>

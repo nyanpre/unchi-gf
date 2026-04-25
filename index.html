@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GOD FIELD: Lobby</title>
+    <title>UNCHI GF: Live Lobby</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,24 +11,24 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
-        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-        .unchi-float { animation: float 3s ease-in-out infinite; }
-        .bg-toilet { background-color: #2d1b15; background-image: radial-gradient(#3e2723 1px, transparent 1px); background-size: 20px 20px; }
-        .card-shadow { box-shadow: 0 4px 0 #999; }
+        .bg-toilet { background: #1a0f0d; }
+        .card-shadow { box-shadow: 0 4px 0 #8d6e63; }
         .card-shadow:active:not(.disabled) { box-shadow: none; transform: translateY(4px); }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #3e2723; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-toilet text-white select-none">
+<body class="bg-toilet text-white font-sans select-none overflow-hidden">
     <div id="root"></div>
 
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
-// --- 定数データ ---
+// --- 定数 ---
 const BASICS = [
-    { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
-    { name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0 },
-    { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
+    { id: 'b1', name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
+    { id: 'b2', name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0 },
+    { id: 'b3', name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
 ];
 const RANDOM_POOL = [
     { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0, weight: 20 },
@@ -39,342 +39,271 @@ const RANDOM_POOL = [
     { name: "しょんべん", atk: 50, mp: -2, acc: 100, heal: 20, mpRec: 0, weight: 5 }
 ];
 
-// --- メインコンポーネント ---
 function App() {
-    const [view, setView] = useState('menu'); // menu, setup, joinList, waiting, game
-    const [mode, setMode] = useState('local');
+    const [view, setView] = useState('menu');
+    const [gameState, setGameState] = useState({ players: [], turn: 0, log: "便所へようこそ。", version: 0 });
+    const [rooms, setRooms] = useState({});
     const [myName, setMyName] = useState('あらい');
-    const [roomName, setRoomName] = useState('');
-    const [rooms, setRooms] = useState({}); // ロビーの部屋リスト
-    const [players, setPlayers] = useState([]);
-    const [turn, setTurn] = useState(0);
-    const [log, setLog] = useState('便所へようこそ。');
-    const [effects, setEffects] = useState([]);
+    const [roomName, setRoomName] = useState('あらいの部屋');
+    const [targetOverlay, setTargetOverlay] = useState(null);
 
-    const gun = useRef(Gun(['https://gun-manhattan.herokuapp.com/gun']));
+    const gun = useRef(Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-ams1.herokuapp.com/gun']));
     const peer = useRef(null);
     const conns = useRef([]);
-    const myId = useRef(Math.random().toString(36).substring(7));
+    const isHost = useRef(false);
+    const currentRoomId = useRef(null);
 
-    // ロビー監視
-    useEffect(() => {
-        gun.current.get('unchi-god-field-rooms').map().on((data, key) => {
-            if (data) {
+    // --- ロビー監視（30秒以上更新がない部屋は消去） ---
+    const refreshLobby = () => {
+        gun.current.get('ugf-lobby-live-2026').map().once((data, key) => {
+            if (data && Date.now() - data.ts < 30000) { 
                 setRooms(prev => ({ ...prev, [key]: data }));
             } else {
-                setRooms(prev => {
-                    const newRooms = { ...prev };
-                    delete newRooms[key];
-                    return newRooms;
-                });
+                setRooms(prev => { const n = {...prev}; delete n[key]; return n; });
             }
         });
+    };
+
+    useEffect(() => {
+        const timer = setInterval(refreshLobby, 5000); // 5秒ごとにリストを掃除
+        return () => clearInterval(timer);
     }, []);
 
-    // --- 通信ロジック ---
-    const createRoom = () => {
-        if (!roomName || !myName) return alert("部屋名と名前を入力してや");
-        const hostPeerId = `ugf-${Math.random().toString(36).substring(7)}`;
-        peer.current = new Peer(hostPeerId);
+    // --- ハートビート（ホストのみ実行） ---
+    useEffect(() => {
+        let heartbeat;
+        if (view === 'waiting' && isHost.current && currentRoomId.current) {
+            heartbeat = setInterval(() => {
+                gun.current.get('ugf-lobby-live-2026').get(currentRoomId.current).get('ts').put(Date.now());
+            }, 10000); // 10秒おきに生存通知
+        }
+        return () => clearInterval(heartbeat);
+    }, [view]);
+
+    // --- 退出時の削除処理 ---
+    const deleteRoom = () => {
+        if (isHost.current && currentRoomId.current) {
+            gun.current.get('ugf-lobby-live-2026').get(currentRoomId.current).put(null);
+            currentRoomId.current = null;
+        }
+    };
+
+    useEffect(() => {
+        window.addEventListener('beforeunload', deleteRoom);
+        return () => {
+            window.removeEventListener('beforeunload', deleteRoom);
+            deleteRoom();
+        };
+    }, []);
+
+    // --- 通信コア ---
+    const initPeer = (id = null) => {
+        if (peer.current) peer.current.destroy();
+        peer.current = new Peer(id);
+        return new Promise(res => peer.current.on('open', res));
+    };
+
+    const handleCreateRoom = async () => {
+        const pid = `ugf-h-${Math.random().toString(36).substring(7)}`;
+        await initPeer(pid);
+        isHost.current = true;
+        currentRoomId.current = pid;
         
-        peer.current.on('open', () => {
-            const roomData = { name: roomName, host: myName, hostId: hostPeerId, players: 1, ts: Date.now() };
-            gun.current.get('unchi-god-field-rooms').get(hostPeerId).put(roomData);
-            
-            setPlayers([{ name: myName.substring(0,8), hp: 100, mp: 5, isDead: false, hand: [] }]);
-            setView('waiting');
-            setupHostListeners();
+        gun.current.get('ugf-lobby-live-2026').get(pid).put({
+            name: roomName, host: myName, hostId: pid, ts: Date.now()
         });
-    };
 
-    const setupHostListeners = () => {
-        peer.current.on('connection', (conn) => {
-            conn.on('data', (data) => {
-                if (data.type === 'JOIN') {
-                    setPlayers(prev => {
-                        const newPlayers = [...prev, { name: data.name.substring(0,8), hp: 100, mp: 5, isDead: false, hand: [] }];
-                        conns.current.push(conn);
-                        // 全員に同期
-                        const syncData = { type: 'MEMBER_SYNC', players: newPlayers };
-                        conns.current.forEach(c => c.send(syncData));
-                        conn.send(syncData);
-                        return newPlayers;
-                    });
-                }
-                if (data.type === 'ACTION') handleAction(data);
-            });
-        });
-    };
+        setGameState(s => ({ ...s, players: [{ name: myName.substring(0,8), hp: 100, mp: 5, isDead: false, hand: [], peerId: pid }] }));
+        setView('waiting');
 
-    const joinRoom = (room) => {
-        setRoomName(room.name);
-        peer.current = new Peer();
-        peer.current.on('open', () => {
-            const conn = peer.current.connect(room.hostId);
+        peer.current.on('connection', conn => {
             conn.on('open', () => {
-                conns.current = [conn];
-                conn.send({ type: 'JOIN', name: myName });
-                setupClientListeners(conn);
-                setView('waiting');
+                conns.current.push(conn);
+                conn.on('data', data => handleData(data, conn));
             });
         });
     };
 
-    const setupClientListeners = (conn) => {
-        conn.on('data', (data) => {
-            if (data.type === 'MEMBER_SYNC') setPlayers(data.players);
-            if (data.type === 'START') {
-                setPlayers(data.players);
-                setView('game');
-            }
-            if (data.type === 'UPDATE') {
-                setPlayers(data.players);
-                setTurn(data.turn);
-                setLog(data.log);
-                if (data.eff) triggerEffect(data.eff.id, data.eff.val, data.eff.type);
-            }
+    const handleJoinRoom = async (room) => {
+        await initPeer();
+        isHost.current = false;
+        const conn = peer.current.connect(room.hostId);
+        conn.on('open', () => {
+            conns.current = [conn];
+            conn.send({ type: 'JOIN_REQ', name: myName.substring(0,8), peerId: peer.current.id });
+            conn.on('data', data => handleData(data, conn));
+            setView('waiting');
         });
     };
 
-    const startGame = () => {
-        if (players.length < 2) return alert("2人以上必要や");
-        // 部屋リストから削除
-        gun.current.get('unchi-god-field-rooms').get(peer.current.id).put(null);
-        
-        const initialPlayers = players.map(p => ({
-            ...p,
-            hand: [...BASICS, ...drawUniqueRand(3)]
-        }));
-        setPlayers(initialPlayers);
-        conns.current.forEach(c => c.send({ type: 'START', players: initialPlayers }));
-        setView('game');
-    };
-
-    // --- ゲームロジック用ヘルパー ---
-    const drawUniqueRand = (count) => {
-        let res = [], pool = [...RANDOM_POOL];
-        for(let i=0; i<count; i++) {
-            let total = pool.reduce((s,c)=>s+c.weight, 0);
-            let r = Math.random()*total, sum=0;
-            for(let j=0; j<pool.length; j++) {
-                sum += pool[j].weight;
-                if(r <= sum) { res.push({...pool[j]}); pool.splice(j,1); break; }
+    const handleData = (data, conn) => {
+        if (isHost.current) {
+            if (data.type === 'JOIN_REQ') {
+                setGameState(prev => {
+                    const nextPlayers = [...prev.players, { name: data.name, hp: 100, mp: 5, isDead: false, hand: [], peerId: data.peerId }];
+                    const next = { ...prev, players: nextPlayers, version: prev.version + 1 };
+                    conns.current.forEach(c => c.send({ type: 'STATE', state: next }));
+                    return next;
+                });
+            }
+            if (data.type === 'ACTION') processBattle(data.aIdx, data.cIdx, data.tIdx);
+        } else {
+            if (data.type === 'STATE') {
+                setGameState(data.state);
+                if (data.state.version === 1 && view === 'waiting') setView('game');
             }
         }
-        return res;
     };
 
-    const triggerEffect = (id, val, type) => {
-        const key = Math.random();
-        setEffects(prev => [...prev, { id, val, type, key }]);
-        setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
-    };
+    // --- バトルロジック（ホストが全権限を持つ） ---
+    const processBattle = (aIdx, cIdx, tIdx) => {
+        let s = JSON.parse(JSON.stringify(gameState));
+        const attacker = s.players[aIdx];
+        const card = attacker.hand[cIdx];
+        let log = `【${attacker.name}】の${card.name}！`;
 
-    // --- アクション送信（ホスト側が計算） ---
-    const sendAction = (cardIdx, targetIdx) => {
-        if (peer.current && !conns.current[0]?.open && !isHostRole()) return;
-        
-        if (isHostRole()) {
-            processBattle(players.findIndex(p => p.name === myName), cardIdx, targetIdx);
-        } else {
-            conns.current[0].send({ type: 'ACTION', cardIdx, targetIdx });
-        }
-    };
-
-    const isHostRole = () => !peer.current || peer.current.id.includes('host') || players[0].name === myName;
-
-    // バトル計算（ホスト用）
-    const processBattle = (pIdx, cardIdx, targetIdx) => {
-        const attacker = players[pIdx];
-        const card = attacker.hand[cardIdx];
-        let newPlayers = JSON.parse(JSON.stringify(players));
-        let battleLog = `【${attacker.name}】の${card.name}！ `;
-
-        // MP更新
-        newPlayers[pIdx].mp = Math.min(10, Math.max(0, newPlayers[pIdx].mp + card.mp));
-
+        attacker.mp += card.mp;
         if (card.multi) {
-            for(let i=0; i<2; i++) {
-                const enemies = newPlayers.filter((p, idx) => !p.isDead && idx !== pIdx);
-                const enemy = enemies[Math.floor(Math.random() * enemies.length)];
-                const eIdx = newPlayers.findIndex(p => p.name === enemy.name);
+            for(let i=0; i<2; i++){
+                const targets = s.players.filter((p,idx) => !p.isDead && idx !== aIdx);
+                const target = targets[Math.floor(Math.random()*targets.length)];
+                const rIdx = s.players.indexOf(target);
                 if (Math.random()*100 <= card.acc) {
-                    newPlayers[eIdx].hp = Math.max(0, newPlayers[eIdx].hp - card.atk);
-                    battleLog += `<br>→ ${enemy.name}に${card.atk}ダメ！`;
-                    triggerEffect(eIdx, card.atk, 'dmg');
-                    if(newPlayers[eIdx].hp <= 0) newPlayers[eIdx].isDead = true;
-                } else {
-                    battleLog += `<br>→ ${enemy.name}にはスカしっぺ`;
-                    triggerEffect(eIdx, 0, 'dmg');
-                }
+                    s.players[rIdx].hp -= card.atk;
+                    log += `<br>→${target.name}に${card.atk}ダメ`;
+                } else log += `<br>→${target.name}にスカ`;
             }
         } else {
             if (Math.random()*100 <= card.acc) {
-                if (card.atk) {
-                    newPlayers[targetIdx].hp = Math.max(0, newPlayers[targetIdx].hp - card.atk);
-                    triggerEffect(targetIdx, card.atk, 'dmg');
-                    battleLog += `${newPlayers[targetIdx].name}に${card.atk}ダメ！`;
-                    if(newPlayers[targetIdx].hp <= 0) newPlayers[targetIdx].isDead = true;
-                }
-                if (card.heal) {
-                    newPlayers[pIdx].hp = Math.min(100, newPlayers[pIdx].hp + card.heal);
-                    triggerEffect(pIdx, card.heal, 'heal');
-                    battleLog += `HP${card.heal}回復！`;
-                }
-            } else {
-                if(card.atk) triggerEffect(targetIdx, 0, 'dmg');
-                battleLog += `外れた！`;
-            }
+                if(card.atk) { s.players[tIdx].hp -= card.atk; log += `${s.players[tIdx].name}に${card.atk}ダメ`; }
+                if(card.heal) { attacker.hp += card.heal; log += `HP${card.heal}回復`; }
+            } else log += `外れた！`;
         }
 
-        // 手札補充
-        if (cardIdx < 3) newPlayers[pIdx].hand[cardIdx] = {...BASICS[cardIdx]};
+        s.players.forEach(p => { if(p.hp<=0){p.hp=0; p.isDead=true;} if(p.hp>100)p.hp=100; });
+        if(cIdx < 3) attacker.hand[cIdx] = {...BASICS[cIdx]};
         else {
-            const others = newPlayers[pIdx].hand.filter((_, i) => i >= 3 && i !== cardIdx).map(c => c.name);
-            let n; do { n = drawUniqueRand(1)[0]; } while (others.includes(n.name));
-            newPlayers[pIdx].hand[cardIdx] = n;
+            const others = attacker.hand.filter((_,i)=>i>=3 && i!==cIdx).map(c=>c.name);
+            let n; do { n = RANDOM_POOL[Math.floor(Math.random()*RANDOM_POOL.length)]; } while(others.includes(n.name));
+            attacker.hand[cIdx] = {...n};
         }
 
-        // ターン終了
-        let nextTurn = pIdx;
-        do { nextTurn = (nextTurn + 1) % newPlayers.length; } while (newPlayers[nextTurn].isDead);
-
-        setPlayers(newPlayers);
-        setTurn(nextTurn);
-        setLog(battleLog);
-
-        if (conns.current.length > 0) {
-            conns.current.forEach(c => c.send({ type: 'UPDATE', players: newPlayers, turn: nextTurn, log: battleLog }));
-        }
+        let next = aIdx;
+        do { next = (next + 1) % s.players.length; } while (s.players[next].isDead);
+        s.turn = next; s.log = log; s.version += 1;
+        setGameState(s);
+        conns.current.forEach(c => c.send({ type: 'STATE', state: s }));
     };
 
-    const handleAction = (data) => {
-        const attackerIdx = turn;
-        processBattle(attackerIdx, data.cardIdx, data.targetIdx);
+    const startGame = () => {
+        deleteRoom(); // 開始時にロビーから消す
+        const startState = { ...gameState, players: gameState.players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), version: 1 };
+        setGameState(startState);
+        conns.current.forEach(c => c.send({ type: 'STATE', state: startState }));
+        setView('game');
     };
 
-    // --- サブコンポーネント ---
-    const TargetOverlay = ({ onSelect, onCancel }) => (
-        <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center">
-            <h2 className="text-2xl mb-6">ターゲットを選べ</h2>
-            {players.map((p, i) => (i !== turn && !p.isDead) && (
-                <button key={i} onClick={() => onSelect(i)} className="bg-yellow-500 text-black font-bold p-4 m-2 w-64 rounded-xl">
-                    {p.name}
-                </button>
-            ))}
-            <button onClick={onCancel} className="mt-8 text-gray-400">戻る</button>
-        </div>
-    );
+    const handleBack = () => {
+        deleteRoom();
+        location.reload();
+    };
 
-    // --- レンダリング ---
     return (
-        <div className="max-w-md mx-auto h-screen flex flex-col p-4 relative">
+        <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col">
             {view === 'menu' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
-                    <div className="text-6xl unchi-float mb-4">💩</div>
-                    <h1 className="text-4xl font-black text-yellow-500 mb-8">UNCHI GF</h1>
-                    <button onClick={() => setView('setup')} className="bg-yellow-500 text-black font-bold p-4 m-2 w-64 rounded-xl card-shadow">
-                        部屋を作る・入る
-                    </button>
-                    <button onClick={() => { setMode('local'); setView('game'); /* ローカル初期化略 */ }} className="bg-white/10 p-4 m-2 w-64 rounded-xl">
-                        ローカルで練習
-                    </button>
+                    <h1 className="text-5xl font-black text-yellow-600 mb-8 drop-shadow-lg">UNCHI GF</h1>
+                    <div className="w-full space-y-4">
+                        <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center" placeholder="名前" maxLength="8" />
+                        <button onClick={()=>setView('lobby')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">入室する</button>
+                    </div>
                 </div>
             )}
 
-            {view === 'setup' && (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-                    <h2 className="text-2xl font-bold">設定</h2>
-                    <input value={myName} onChange={e => setMyName(e.target.value)} placeholder="名前 (最大8文字)" maxLength="8" className="w-full p-4 rounded-xl text-black text-center" />
-                    <div className="w-full flex space-x-2">
-                        <input value={roomName} onChange={e => setRoomName(e.target.value)} placeholder="部屋名" className="flex-1 p-4 rounded-xl text-black text-center" />
-                        <button onClick={createRoom} className="bg-yellow-500 text-black font-bold p-4 rounded-xl">作成</button>
+            {view === 'lobby' && (
+                <div className="flex-1 flex flex-col py-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold">便所一覧</h2>
+                        <button onClick={()=>setView('menu')} className="text-gray-500">戻る</button>
                     </div>
-                    <div className="w-full bg-black/30 p-4 rounded-xl min-h-[200px]">
-                        <h3 className="text-sm opacity-50 mb-2">公開中の部屋</h3>
-                        {Object.values(rooms).map((r, i) => (
-                            <div key={i} onClick={() => joinRoom(r)} className="bg-white/10 p-3 mb-2 rounded-lg flex justify-between cursor-pointer hover:bg-white/20">
-                                <span>{r.name}</span>
-                                <span className="text-xs text-yellow-500">主: {r.host}</span>
+                    <div className="bg-white/5 p-4 rounded-2xl mb-6">
+                        <div className="flex gap-2">
+                            <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="flex-1 bg-white/10 p-3 rounded-xl text-sm" placeholder="部屋名" />
+                            <button onClick={handleCreateRoom} className="bg-green-600 px-6 py-2 rounded-xl font-bold">作成</button>
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-3">
+                        {Object.values(rooms).filter(r=>r).length === 0 && <p className="text-center text-gray-600 py-10">稼働中の便所はありません</p>}
+                        {Object.values(rooms).map(r => r && (
+                            <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5">
+                                <div><div className="font-bold text-yellow-500">{r.name}</div><div className="text-[10px] text-gray-500">主: {r.host}</div></div>
+                                <div className="text-xs font-bold">参加する</div>
                             </div>
                         ))}
                     </div>
-                    <button onClick={() => setView('menu')} className="text-gray-400">戻る</button>
                 </div>
             )}
 
             {view === 'waiting' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
-                    <h2 className="text-2xl text-yellow-500 mb-4">🚽 便所待機中</h2>
-                    <div className="bg-black/40 w-full rounded-2xl p-6 space-y-4">
-                        {players.map((p, i) => (
-                            <div key={i} className="text-xl font-bold border-b border-white/10 pb-2">
-                                {i+1}. {p.name} {i===0 && <span className="text-xs bg-red-500 px-2 py-1 rounded ml-2">親</span>}
-                            </div>
-                        ))}
+                    <div className="w-full bg-white/5 rounded-3xl p-8 mb-8 text-center">
+                        <h2 className="text-xl font-bold mb-6">待機中</h2>
+                        {gameState.players.map((p,i) => <div key={i} className="text-xl font-bold my-2">{p.name} {i===0 && '👑'}</div>)}
                     </div>
-                    {isHostRole() ? (
-                        <button onClick={startGame} className="bg-yellow-500 text-black font-bold p-4 mt-8 w-full rounded-xl card-shadow">
-                            ゲーム開始！
-                        </button>
-                    ) : (
-                        <p className="mt-8 animate-pulse">親が開始するのを待っています...</p>
-                    )}
+                    {isHost.current ? (
+                        <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl mb-4">ゲーム開始！</button>
+                    ) : <p className="mb-4 animate-pulse">親が開始するのを待っています</p>}
+                    <button onClick={handleBack} className="text-gray-500">部屋を閉じて戻る</button>
                 </div>
             )}
 
             {view === 'game' && (
-                <div className="flex flex-col h-full">
-                    {/* プレイヤーグリッド */}
+                <div className="flex-1 flex flex-col pt-2">
                     <div className="grid grid-cols-2 gap-2 mb-4">
-                        {players.map((p, i) => (
-                            <div key={i} id={`p-card-${i}`} className={`p-4 rounded-xl border-2 transition-all relative ${turn === i ? 'border-yellow-500 bg-yellow-500/10' : 'border-transparent bg-white/5'} ${p.isDead ? 'opacity-30 grayscale' : ''}`}>
-                                <div className="font-bold truncate">{p.name}</div>
-                                <div className="text-xs">HP:{p.hp} MP:{p.mp}</div>
-                                <div className="h-1 bg-black rounded-full mt-1 overflow-hidden">
-                                    <div className="h-full bg-green-500 transition-all" style={{width: p.hp+'%'}}></div>
+                        {gameState.players.map((p, i) => (
+                            <div key={i} className={`p-3 rounded-2xl border-2 transition-all ${gameState.turn === i ? 'border-yellow-600 bg-yellow-600/10' : 'border-transparent bg-white/5'} ${p.isDead ? 'opacity-20' : ''}`}>
+                                <div className="font-bold truncate text-sm flex justify-between"><span>{p.name}</span><span>{i===0?'👑':''}</span></div>
+                                <div className="flex justify-between text-[10px] mt-1 font-mono"><span>HP:{p.hp}</span><span>MP:{p.mp}</span></div>
+                                <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden">
+                                    <div className="h-full bg-green-500 transition-all duration-500" style={{width:p.hp+'%'}}></div>
                                 </div>
-                                {effects.filter(e => e.id === i).map(e => (
-                                    <div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-3xl z-10 animate-bounce ${e.type==='dmg'?'text-red-500':'text-green-500'}`}>
-                                        {e.type==='dmg'?'-':'+'}{e.val}
-                                    </div>
-                                ))}
                             </div>
                         ))}
                     </div>
-
-                    {/* ログ */}
-                    <div className="bg-black/40 p-4 rounded-xl h-24 overflow-y-auto text-sm border-l-4 border-yellow-500 mb-4" dangerouslySetInnerHTML={{__html: log}}></div>
-
-                    {/* 手札 */}
+                    <div className="bg-black/40 p-4 rounded-2xl h-24 text-xs border-l-4 border-yellow-600 overflow-y-auto leading-relaxed mb-4" dangerouslySetInnerHTML={{__html: gameState.log}}></div>
                     <div className="grid grid-cols-3 gap-2">
-                        {players[turn]?.hand.map((c, i) => {
-                            const isMyTurn = players[turn].name === myName;
-                            const canPay = (players[turn].mp + (c.mp<0?c.mp:0)) >= 0;
+                        {gameState.players[gameState.turn]?.hand.map((c, i) => {
+                            const isMyTurn = gameState.players[gameState.turn].peerId === peer.current?.id;
+                            const canPay = (gameState.players[gameState.turn].mp + (c.mp<0?c.mp:0)) >= 0;
                             return (
-                                <div key={i} 
+                                <button key={i} disabled={!isMyTurn || !canPay}
                                     onClick={() => {
-                                        if(!isMyTurn || !canPay) return;
-                                        if(c.atk > 0 && !c.multi) setView('targetSelect_'+i);
-                                        else sendAction(i, turn);
+                                        if(c.atk && !c.multi) setTargetOverlay(i);
+                                        else isHost.current ? processBattle(gameState.turn, i, gameState.turn) : conns.current[0].send({ type:'ACTION', aIdx:gameState.turn, cIdx:i, tIdx:gameState.turn });
                                     }}
-                                    className={`h-28 rounded-lg flex flex-col items-center justify-center p-2 text-center card-shadow ${i<3?'bg-white text-black':'bg-yellow-100 text-black'} ${(!isMyTurn || !canPay)?'opacity-40 grayscale':''}`}>
-                                    <div className="text-xs font-bold leading-tight">{c.name}</div>
-                                    <div className="text-[10px] mt-1">
-                                        {c.atk?`攻:${c.atk} `:''}{c.heal?`回:${c.heal} `:''}{c.mpRec?`MP:+${c.mpRec}`:''}
-                                    </div>
-                                    <div className="text-[9px] mt-1 font-bold text-blue-600">{c.mp < 0 ? `消費:${-c.mp}` : '消費0'}</div>
-                                </div>
+                                    className={`h-28 rounded-xl flex flex-col items-center justify-center p-2 text-center card-shadow transition-all ${i<3?'bg-stone-100 text-stone-800':'bg-yellow-100 text-stone-800'} ${(!isMyTurn || !canPay)?'opacity-20 grayscale':''}`}>
+                                    <div className="text-[11px] font-black leading-tight mb-1">{c.name}</div>
+                                    <div className="text-[9px] opacity-70">{c.atk?`攻:${c.atk} `:''}{c.heal?`回:${c.heal} `:''}{c.mpRec?`MP:+${c.mpRec}`:''}<br/>命中:{c.acc}%</div>
+                                    <div className="text-[9px] font-bold text-blue-700 mt-1">{c.mp<0?`消費MP:${-c.mp}`:'FREE'}</div>
+                                </button>
                             );
                         })}
                     </div>
+                </div>
+            )}
 
-                    {view.startsWith('targetSelect_') && (
-                        <TargetOverlay 
-                            onSelect={(t) => { sendAction(parseInt(view.split('_')[1]), t); setView('game'); }}
-                            onCancel={() => setView('game')} 
-                        />
-                    )}
+            {targetOverlay !== null && (
+                <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-6">
+                    <h2 className="text-xl font-bold mb-6 text-yellow-600">ターゲット選択</h2>
+                    <div className="w-full space-y-3">
+                        {gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (
+                            <button key={i} onClick={() => {
+                                isHost.current ? processBattle(gameState.turn, targetOverlay, i) : conns.current[0].send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i });
+                                setTargetOverlay(null);
+                            }} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl text-lg">{p.name}</button>
+                        ))}
+                        <button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-gray-500">戻る</button>
+                    </div>
                 </div>
             )}
         </div>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Lobby Refresh</title>
+    <title>UNCHI GF: Pro UX Edition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,6 +30,13 @@
         .animate-float-up { animation: float-up 1s forwards; }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
         .shake { animation: shake 0.2s 3; }
+
+        /* スピニングアニメーション */
+        @keyframes spin-sync {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin-custom { animation: spin-sync 0.8s linear infinite; }
     </style>
 </head>
 <body class="bg-toilet text-white font-sans select-none overflow-hidden">
@@ -65,6 +72,9 @@ function App() {
     
     const [targetOverlay, setTargetOverlay] = useState(null);
     const [effects, setEffects] = useState([]);
+    
+    // 更新ボタンの状態
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const gun = useRef(Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-ams1.herokuapp.com/gun']));
     const peer = useRef(null);
@@ -78,9 +88,9 @@ function App() {
         setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
     };
 
-    // --- ロビー再読み込みロジック ---
     const refreshLobby = () => {
-        setRooms({}); // 一旦クリア
+        setIsRefreshing(true);
+        setRooms({}); 
         gun.current.get('ugf-lobby-final-2026').map().once((data, key) => {
             if (data && Date.now() - data.ts < 30000) { 
                 setRooms(prev => ({ ...prev, [key]: data }));
@@ -88,12 +98,24 @@ function App() {
                 setRooms(prev => { const n = {...prev}; delete n[key]; return n; });
             }
         });
+        // 1.5秒後に更新アニメーションを停止
+        setTimeout(() => setIsRefreshing(false), 1500);
     };
 
     useEffect(() => {
-        const timer = setInterval(refreshLobby, 5000);
+        const timer = setInterval(() => {
+            if (!isRefreshing) {
+                gun.current.get('ugf-lobby-final-2026').map().once((data, key) => {
+                    if (data && Date.now() - data.ts < 30000) { 
+                        setRooms(prev => ({ ...prev, [key]: data }));
+                    } else {
+                        setRooms(prev => { const n = {...prev}; delete n[key]; return n; });
+                    }
+                });
+            }
+        }, 5000);
         return () => clearInterval(timer);
-    }, []);
+    }, [isRefreshing]);
 
     const deleteRoom = () => { if (isHost.current && currentRoomId.current) gun.current.get('ugf-lobby-final-2026').get(currentRoomId.current).put(null); };
 
@@ -223,7 +245,7 @@ function App() {
                 <div className="flex-1 flex flex-col items-center justify-center p-4">
                     <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 ローカル設定</h1>
                     <div className="w-full space-y-4 text-center">
-                        <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                        <div className="bg-white/5 p-4 rounded-xl border border-white/5 text-sm">
                             人数：
                             <select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-[#3e2723] p-2 rounded-lg ml-2 border border-white/20 text-white">
                                 <option value="2">2人</option>
@@ -243,27 +265,46 @@ function App() {
                 </div>
             )}
 
-            {/* 4. ロビー画面 (更新ボタン追加) */}
+            {/* 4. ロビー画面（更新ボタンの改善） */}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex justify-between items-end mb-6">
                         <h2 className="text-2xl font-bold text-yellow-500">便所一覧</h2>
-                        <div className="flex gap-4">
-                            <button onClick={refreshLobby} className="text-2xl hover:scale-110 transition active:rotate-180 duration-500">🔄</button>
-                            <button onClick={()=>setView('modeSelect')} className="text-white/50">戻る</button>
-                        </div>
+                        <button 
+                            onClick={refreshLobby} 
+                            disabled={isRefreshing}
+                            className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-2 active:scale-95 transition card-shadow overflow-hidden"
+                        >
+                            <span className={`text-lg ${isRefreshing ? 'animate-spin-custom' : ''}`}>🔄</span>
+                            <span className="font-bold">{isRefreshing ? '更新中...' : '便所を捜索'}</span>
+                        </button>
                     </div>
-                    <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3">
-                        <p className="text-xs text-white/40 font-bold ml-1">部屋を作る</p>
+                    <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5">
+                        <p className="text-xs text-white/40 font-bold ml-1">新しい便所を設置する</p>
                         <div className="flex gap-2">
                             <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="flex-1 bg-white/10 p-3 rounded-xl text-sm" placeholder={`${myName}の便所`} />
-                            <button onClick={handleCreateRoom} className="bg-green-600 px-6 py-2 rounded-xl font-bold">作成</button>
+                            <button onClick={handleCreateRoom} className="bg-green-600 px-6 py-2 rounded-xl font-bold hover:bg-green-500 transition">設置</button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto space-y-3">
-                        {Object.values(rooms).filter(r=>r).length === 0 && <p className="text-center text-white/30 py-10">稼働中の便所はありません</p>}
-                        {Object.values(rooms).map(r => r && (<div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5 hover:bg-white/10"><div><div className="font-bold text-yellow-500">{r.name}</div><div className="text-[10px] text-white/40">主: {r.host}</div></div><div className="text-xs font-bold bg-yellow-600 text-black px-3 py-1 rounded-full">参加</div></div>))}
+                    <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                        {Object.values(rooms).filter(r=>r).length === 0 ? (
+                            <div className="text-center py-10">
+                                <p className="text-white/30 text-sm mb-2">稼働中の便所はありません</p>
+                                <p className="text-[10px] text-white/20 italic">上のボタンで再捜索してください</p>
+                            </div>
+                        ) : (
+                            Object.values(rooms).map(r => r && (
+                                <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5 hover:bg-white/20">
+                                    <div>
+                                        <div className="font-bold text-yellow-500">{r.name}</div>
+                                        <div className="text-[10px] text-white/40">主: {r.host}</div>
+                                    </div>
+                                    <div className="text-xs font-bold bg-yellow-600 text-black px-4 py-2 rounded-xl card-shadow">入る</div>
+                                </div>
+                            ))
+                        )}
                     </div>
+                    <button onClick={()=>setView('modeSelect')} className="text-white/50 text-sm mt-4 text-center">戻る</button>
                 </div>
             )}
 

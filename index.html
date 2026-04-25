@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Sequence Edition</title>
+    <title>UNCHI GF: Bug Fixed Edition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -94,6 +94,7 @@ function App() {
 
     const deleteRoom = () => { if (isHost.current && currentRoomId.current) gun.current.get('ugf-lobby-final-2026').get(currentRoomId.current).put(null); };
 
+    // --- ゲーム開始前の流れ ---
     const startLocalGame = () => {
         setMode('local'); isHost.current = true;
         const allNames = [myName, ...localNames].slice(0, localPlayerCount);
@@ -159,6 +160,7 @@ function App() {
         if (card.multi) {
             for(let i=0; i<2; i++){
                 const targets = s.players.filter((p,idx) => !p.isDead && idx !== aIdx);
+                if (targets.length === 0) break;
                 const target = targets[Math.floor(Math.random() * targets.length)];
                 const rIdx = s.players.indexOf(target);
                 if (Math.random()*100 <= card.acc) {
@@ -188,7 +190,7 @@ function App() {
     return (
         <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col">
             
-            {/* 1. 名前入力画面 (menu) */}
+            {/* 名前入力画面 */}
             {view === 'menu' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <h1 className="text-5xl font-black text-yellow-500 mb-12 drop-shadow-lg">UNCHI GF</h1>
@@ -202,7 +204,7 @@ function App() {
                 </div>
             )}
 
-            {/* 2. モード選択画面 (modeSelect) */}
+            {/* モード選択画面 */}
             {view === 'modeSelect' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <h2 className="text-2xl font-bold text-yellow-500 mb-8">モードを選択</h2>
@@ -214,7 +216,7 @@ function App() {
                 </div>
             )}
 
-            {/* 3. ローカル設定画面 (localSetup) */}
+            {/* ローカル設定画面 */}
             {view === 'localSetup' && (
                 <div className="flex-1 flex flex-col items-center justify-center p-4">
                     <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 ローカル設定</h1>
@@ -239,7 +241,7 @@ function App() {
                 </div>
             )}
 
-            {/* 4. ロビー画面 (lobby) */}
+            {/* ロビー画面 */}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6">
                     <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-yellow-500">便所一覧</h2><button onClick={()=>setView('modeSelect')} className="text-white/50">戻る</button></div>
@@ -257,7 +259,7 @@ function App() {
                 </div>
             )}
 
-            {/* 5. 待機画面 (waiting) */}
+            {/* 待機画面 */}
             {view === 'waiting' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5"><h2 className="text-xl font-bold mb-6 text-yellow-500">待機中</h2>{gameState.players.map((p,i) => <div key={i} className="text-xl font-bold my-2">{p.name} {i===0 && '👑'}</div>)}</div>
@@ -265,16 +267,25 @@ function App() {
                 </div>
             )}
 
-            {/* 6. ゲーム画面 (game) */}
+            {/* ゲーム本編 */}
             {view === 'game' && (
                 <div className="flex flex-col h-full pt-2">
-                    <div className="grid grid-cols-2 gap-2 mb-4">
+                    {/* プレイヤーエリア（修正：全員表示されるようにグリッドを調整） */}
+                    <div className="grid grid-cols-2 gap-2 mb-4 shrink-0">
                         {gameState.players.map((p, i) => (
                             <div key={i} id={`p-card-${i}`} className={`p-3 rounded-2xl border-2 transition-all relative ${gameState.turn === i ? 'p-card-active scale-105' : 'border-transparent p-card-bg'} ${p.isDead ? 'opacity-20' : ''}`}>
                                 <div className="font-bold truncate text-sm flex justify-between"><span>{p.name}</span><span>{i===0?'👑':''}</span></div>
                                 <div className="flex justify-between text-[10px] mt-1 opacity-70 font-mono"><span>HP:{p.hp}</span><span>MP:{p.mp}</span></div>
-                                <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden"><div className="h-full bg-green-500 transition-all" style={{width:p.hp+'%'}}></div></div>
-                                <div className="h-1 bg-black/40 rounded-full mt-0.5 overflow-hidden"><div className="h-full bar-mp transition-all" style={{width:(p.mp * 10)+'%'}}></div></div>
+                                
+                                {/* バーエリア */}
+                                <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden">
+                                    <div className="h-full bg-green-500 transition-all duration-500" style={{width:p.hp+'%'}}></div>
+                                </div>
+                                <div className="h-1 bg-black/40 rounded-full mt-0.5 overflow-hidden">
+                                    <div className="h-full bar-mp transition-all duration-500" style={{width:(p.mp * 10)+'%'}}></div>
+                                </div>
+
+                                {/* エフェクト */}
                                 {effects.filter(e => e.id === i).map(e => (
                                     <div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-3xl z-50 animate-float-up pointer-events-none drop-shadow-lg ${e.type === 'dmg' ? 'text-red-500' : (e.type === 'heal' ? 'text-green-400' : 'text-blue-400')}`}>
                                         {e.type === 'dmg' ? '-' : '+'}{e.val}
@@ -283,8 +294,12 @@ function App() {
                             </div>
                         ))}
                     </div>
-                    <div className="bg-[#3e2723] p-4 rounded-2xl h-24 text-xs border-l-4 border-yellow-600 overflow-y-auto mb-4" dangerouslySetInnerHTML={{__html: gameState.log}}></div>
-                    <div className="grid grid-cols-3 gap-2">
+
+                    {/* メッセージウィンドウ */}
+                    <div className="bg-[#3e2723] p-4 rounded-2xl h-24 text-xs border-l-4 border-yellow-600 overflow-y-auto mb-4 shrink-0" dangerouslySetInnerHTML={{__html: gameState.log}}></div>
+
+                    {/* 手札 */}
+                    <div className="grid grid-cols-3 gap-2 overflow-y-auto pb-4">
                         {gameState.players[gameState.turn]?.hand.map((c, i) => {
                             const isMyTurn = mode === 'local' || gameState.players[gameState.turn].peerId === peer.current?.id;
                             const canPay = (gameState.players[gameState.turn].mp + (c.mp<0?c.mp:0)) >= 0;

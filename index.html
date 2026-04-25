@@ -3,203 +3,216 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GOD FIELD</title>
+    <title>UNCHI GOD FIELD - 改</title>
     <style>
-        :root {
-            --bg-color: #4e342e;
-            --card-bg: #fff9c4;
-            --primary: #795548;
-            --accent: #ffc107;
-        }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg-color); color: white; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        :root { --bg: #3e2723; --card: #fffde7; --accent: #ffc107; --mp: #03a9f4; --hp: #4caf50; }
+        body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; display: flex; justify-content: center; }
         .container { width: 100%; max-width: 500px; padding: 15px; box-sizing: border-box; }
-        h1 { font-size: 20px; text-shadow: 2px 2px 0px #000; margin: 10px 0; }
         
-        /* プレイヤーエリア */
-        .player-list { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 20px; }
-        .player-card { flex: 1; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; border: 2px solid transparent; transition: 0.3s; }
-        .player-card.active { border-color: var(--accent); background: rgba(255, 193, 7, 0.2); transform: scale(1.05); }
-        .player-card.dead { opacity: 0.4; filter: grayscale(1); }
-        .hp-container { background: #333; height: 8px; border-radius: 4px; margin-top: 5px; overflow: hidden; }
-        .hp-bar { height: 100%; background: #4caf50; transition: width 0.5s; }
+        /* 設定画面 */
+        #setup-screen { background: rgba(0,0,0,0.8); position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .input-group { margin: 10px 0; width: 100%; text-align: center; }
+        input { padding: 10px; border-radius: 5px; border: none; width: 70%; margin: 5px; }
 
-        /* メインディスプレイ */
-        .display { background: rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; min-height: 100px; margin-bottom: 20px; display: flex; flex-direction: column; justify-content: center; }
-        .log-msg { font-size: 14px; line-height: 1.4; color: #ffe082; }
+        /* プレイヤー情報 */
+        .player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+        .p-card { background: rgba(255,255,255,0.1); padding: 8px; border-radius: 8px; border: 2px solid transparent; font-size: 13px; }
+        .p-card.active { border-color: var(--accent); background: rgba(255,193,7,0.15); transform: scale(1.02); }
+        .p-card.dead { opacity: 0.3; filter: grayscale(1); }
+        .bar-outer { background: #222; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden; }
+        .bar-hp { height: 100%; background: var(--hp); transition: 0.3s; }
+        .bar-mp { height: 100%; background: var(--mp); transition: 0.3s; }
 
-        /* 手札 */
-        .hand { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
-        .card { background: var(--card-bg); color: #3e2723; height: 90px; border-radius: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; border-bottom: 4px solid #d7ccc8; transition: 0.2s; }
-        .card:active { transform: translateY(4px); border-bottom: 0; }
-        .card-name { font-weight: bold; font-size: 14px; }
-        .card-val { font-size: 11px; color: #795548; }
+        /* ログと手札 */
+        .log { background: rgba(0,0,0,0.3); padding: 12px; border-radius: 10px; min-height: 80px; margin-bottom: 15px; font-size: 14px; border-left: 4px solid var(--accent); }
+        .hand { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        .card { background: var(--card); color: #3e2723; height: 100px; border-radius: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; border-bottom: 4px solid #d7ccc8; padding: 5px; text-align: center; }
+        .card.disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; }
+        .c-name { font-weight: bold; font-size: 13px; margin-bottom: 4px; }
+        .c-stat { font-size: 10px; color: #5d4037; }
+        .c-mp { font-size: 10px; color: var(--mp); font-weight: bold; }
 
         /* ターゲット選択 */
-        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
-        .target-btn { background: var(--accent); border: none; padding: 15px 30px; margin: 10px; border-radius: 30px; font-weight: bold; font-size: 18px; width: 200px; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        .target-btn { background: var(--accent); border: none; padding: 15px; margin: 8px; border-radius: 10px; font-weight: bold; width: 200px; }
         
-        .footer { font-size: 10px; opacity: 0.5; margin-top: auto; padding: 10px; }
+        h1 { font-size: 18px; text-align: center; }
+        button.start-btn { background: var(--accent); border: none; padding: 15px 40px; border-radius: 30px; font-weight: bold; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>💩 UNCHI GOD FIELD</h1>
-
-    <div class="player-list" id="player-list"></div>
-
-    <div class="display">
-        <div id="status-text" style="font-weight:bold; margin-bottom:5px;"></div>
-        <div id="log-display" class="log-msg">ゲーム開始！</div>
+<div id="setup-screen">
+    <h1>💩 UNCHI GOD FIELD 設定</h1>
+    <div class="input-group">
+        人数：
+        <select id="player-count" onchange="toggleInputs()">
+            <option value="2">2人</option>
+            <option value="3" selected>3人</option>
+            <option value="4">4人</option>
+        </select>
     </div>
+    <div id="name-inputs" class="input-group">
+        <input type="text" id="p0" value="あらい">
+        <input type="text" id="p1" value="ひまだ">
+        <input type="text" id="p2" value="やまさん">
+        <input type="text" id="p3" value="さく" style="display:none">
+    </div>
+    <button class="start-btn" onclick="startGame()">開戦</button>
+</div>
 
+<div class="container">
+    <h1>💩 UNCHI GOD FIELD: 改</h1>
+    <div class="player-grid" id="player-grid"></div>
+    <div class="log" id="game-log">自分のターンにカードを選んでください。</div>
     <div class="hand" id="hand-area"></div>
 </div>
 
 <div class="overlay" id="target-overlay">
-    <h2 style="color:white">誰に放つ？</h2>
-    <div id="target-buttons"></div>
-    <button onclick="cancelSelection()" style="background:none; color:white; border:1px solid white; margin-top:20px; border-radius:5px;">キャンセル</button>
+    <h2 style="color:white">ターゲット選択</h2>
+    <div id="target-btns"></div>
+    <button onclick="cancelSelection()" style="background:none; color:white; border:1px solid white; margin-top:20px; padding:5px 15px; border-radius:5px;">戻る</button>
 </div>
 
-<div class="footer">Ver 1.0.0 - Produced by Arai</div>
-
 <script>
-    const players = [
-        { name: "あらい", hp: 100, hand: [], isDead: false },
-        { name: "ひまだ", hp: 100, hand: [], isDead: false },
-        { name: "やまさん", hp: 100, hand: [], isDead: false }
+    const MASTER_CARDS = [
+        { name: "軟便", type: "atk", val: 15, acc: 95, mp: 0, desc: "ほぼ当たる" },
+        { name: "硬便", type: "atk", val: 30, acc: 75, mp: 2, desc: "中ダメージ" },
+        { name: "下痢", type: "atk", val: 50, acc: 55, mp: 4, desc: "高威力低命中" },
+        { name: "宿便", type: "atk", val: 80, acc: 40, mp: 7, desc: "一撃必殺級" },
+        { name: "紙で拭く", type: "heal", val: 20, acc: 100, mp: 0, desc: "HP回復" },
+        { name: "きばる", type: "mp", val: 3, acc: 100, mp: 0, desc: "MPを3回復" },
+        { name: "瞑想", type: "mp", val: 6, acc: 100, mp: 2, desc: "MPを大幅回復" },
+        { name: "奇跡", type: "special", val: 100, acc: 100, mp: 5, desc: "HP全回復" }
     ];
 
-    const cards = [
-        { name: "軟便", type: "atk", val: 15, desc: "小ダメージ" },
-        { name: "硬便", type: "atk", val: 25, desc: "中ダメージ" },
-        { name: "下痢", type: "atk", val: 45, desc: "大ダメージ" },
-        { name: "宿便", type: "atk", val: 60, desc: "致命傷" },
-        { name: "紙", type: "heal", val: 25, desc: "回復" },
-        { name: "洗浄", type: "heal", val: 50, desc: "大回復" },
-        { name: "おなら", type: "etc", val: 0, desc: "スカ" },
-        { name: "奇跡", type: "special", val: 100, desc: "全回復" }
-    ];
-
+    let players = [];
     let turn = 0;
     let selectedIdx = null;
 
-    function init() {
-        players.forEach(p => {
-            for(let i=0; i<5; i++) p.hand.push(draw());
-        });
+    function toggleInputs() {
+        const count = document.getElementById('player-count').value;
+        for(let i=0; i<4; i++) {
+            document.getElementById(`p${i}`).style.display = i < count ? 'inline-block' : 'none';
+        }
+    }
+
+    function startGame() {
+        const count = parseInt(document.getElementById('player-count').value);
+        players = [];
+        for(let i=0; i<count; i++) {
+            players.push({
+                name: document.getElementById(`p${i}`).value || `Player${i+1}`,
+                hp: 100, mp: 5, hand: [], isDead: false
+            });
+        }
+        players.forEach(p => { for(let i=0; i<5; i++) p.hand.push(drawCard()); });
+        document.getElementById('setup-screen').style.display = 'none';
         updateUI();
     }
 
-    function draw() {
-        return cards[Math.floor(Math.random() * cards.length)];
-    }
+    function drawCard() { return MASTER_CARDS[Math.floor(Math.random() * MASTER_CARDS.length)]; }
 
     function updateUI() {
-        const list = document.getElementById('player-list');
-        list.innerHTML = '';
+        const grid = document.getElementById('player-grid');
+        grid.innerHTML = '';
         players.forEach((p, i) => {
-            list.innerHTML += `
-                <div class="player-card ${i === turn ? 'active' : ''} ${p.isDead ? 'dead' : ''}">
-                    <div style="font-size:12px">${p.name}</div>
-                    <div style="font-weight:bold">${p.hp}%</div>
-                    <div class="hp-container"><div class="hp-bar" style="width:${p.hp}%"></div></div>
+            grid.innerHTML += `
+                <div class="p-card ${i === turn ? 'active' : ''} ${p.isDead ? 'dead' : ''}">
+                    <strong>${p.name}</strong><br>
+                    HP: ${p.hp} | MP: ${p.mp}
+                    <div class="bar-outer"><div class="bar-hp" style="width:${p.hp}%"></div></div>
+                    <div class="bar-outer"><div class="bar-mp" style="width:${p.mp*10}%"></div></div>
                 </div>
             `;
         });
 
-        const status = document.getElementById('status-text');
-        status.innerText = `${players[turn].name} のターン`;
-
         const handArea = document.getElementById('hand-area');
         handArea.innerHTML = '';
         players[turn].hand.forEach((c, i) => {
+            const canUse = players[turn].mp >= c.mp;
             const cardDiv = document.createElement('div');
-            cardDiv.className = 'card';
-            cardDiv.innerHTML = `<span class="card-name">${c.name}</span><span class="card-val">${c.desc}</span>`;
-            cardDiv.onclick = () => useCard(i);
+            cardDiv.className = `card ${canUse ? '' : 'disabled'}`;
+            cardDiv.innerHTML = `
+                <span class="c-name">${c.name}</span>
+                <span class="c-stat">命中:${c.acc}% 威力:${c.val}</span>
+                <span class="c-mp">${c.mp > 0 ? '消費MP:'+c.mp : 'MP消費なし'}</span>
+            `;
+            if(canUse) cardDiv.onclick = () => selectCard(i);
             handArea.appendChild(cardDiv);
         });
     }
 
-    function useCard(idx) {
+    function selectCard(idx) {
         selectedIdx = idx;
         const card = players[turn].hand[idx];
-        
         if (card.type === 'atk') {
-            showTargetSelector();
+            const overlay = document.getElementById('target-overlay');
+            const btns = document.getElementById('target-btns');
+            btns.innerHTML = '';
+            players.forEach((p, i) => {
+                if (i !== turn && !p.isDead) {
+                    const b = document.createElement('button');
+                    b.className = 'target-btn';
+                    b.innerText = p.name;
+                    b.onclick = () => execute(i);
+                    btns.appendChild(b);
+                }
+            });
+            overlay.style.display = 'flex';
         } else {
-            execute(turn); // 自分に使用
+            execute(turn);
         }
     }
 
-    function showTargetSelector() {
-        const overlay = document.getElementById('target-overlay');
-        const btns = document.getElementById('target-buttons');
-        btns.innerHTML = '';
-        players.forEach((p, i) => {
-            if (i !== turn && !p.isDead) {
-                const b = document.createElement('button');
-                b.className = 'target-btn';
-                b.innerText = p.name;
-                b.onclick = () => execute(i);
-                btns.appendChild(b);
-            }
-        });
-        overlay.style.display = 'flex';
-    }
-
-    function cancelSelection() {
-        document.getElementById('target-overlay').style.display = 'none';
-    }
+    function cancelSelection() { document.getElementById('target-overlay').style.display = 'none'; }
 
     function execute(targetIdx) {
         const card = players[turn].hand.splice(selectedIdx, 1)[0];
+        const attacker = players[turn];
         const target = players[targetIdx];
-        const log = document.getElementById('log-display');
+        const log = document.getElementById('game-log');
         document.getElementById('target-overlay').style.display = 'none';
 
-        let res = "";
-        if (card.type === 'atk') {
-            target.hp -= card.val;
-            res = `${target.name}に${card.val}のダメージ！`;
-            if (target.hp <= 0) { target.hp = 0; target.isDead = true; res += " 💩全漏れ！"; }
-        } else if (card.type === 'heal' || card.type === 'special') {
-            target.hp = Math.min(100, target.hp + card.val);
-            res = `${target.name}は${card.name}でスッキリした（HP${target.hp}）`;
+        attacker.mp -= card.mp;
+        let msg = `${attacker.name}の「${card.name}」！ `;
+
+        const hitRoll = Math.random() * 100;
+        if (hitRoll <= card.acc) {
+            if (card.type === 'atk') {
+                target.hp -= card.val;
+                msg += `${target.name}に${card.val}ダメージ！`;
+                if (target.hp <= 0) { target.hp = 0; target.isDead = true; msg += " 💩全漏れ！！"; }
+            } else if (card.type === 'heal' || card.type === 'special') {
+                target.hp = Math.min(100, target.hp + card.val);
+                msg += `HPが${card.val}回復！`;
+            } else if (card.type === 'mp') {
+                attacker.mp = Math.min(10, attacker.mp + card.val);
+                msg += `MPが${card.val}回復！`;
+            }
         } else {
-            res = "プゥ〜。何も起きなかった。";
+            msg += `しかし、空振りに終わった...（ミス！）`;
         }
 
-        log.innerText = `${players[turn].name}の「${card.name}」！ ${res}`;
-        
-        if (checkGame()) {
-            setTimeout(nextTurn, 1000);
-        }
+        log.innerHTML = msg;
+        if (checkVictory()) setTimeout(nextTurn, 1200);
     }
 
     function nextTurn() {
-        while(players[turn].hand.length < 5) players[turn].hand.push(draw());
-        
-        do {
-            turn = (turn + 1) % players.length;
-        } while (players[turn].isDead);
-        
+        while(players[turn].hand.length < 5) players[turn].hand.push(drawCard());
+        do { turn = (turn + 1) % players.length; } while (players[turn].isDead);
         updateUI();
     }
 
-    function checkGame() {
+    function checkVictory() {
         const alive = players.filter(p => !p.isDead);
         if (alive.length === 1) {
-            document.getElementById('log-display').innerText = `勝者：${alive[0].name}！ 他の二人は漏らしました。`;
-            setTimeout(() => { alert("優勝：" + alive[0].name); location.reload(); }, 2000);
+            alert(`優勝：${alive[0].name}！\n聖なるお尻の持ち主です。`);
+            location.reload();
             return false;
         }
         return true;
     }
-
-    init();
 </script>
 </body>
 </html>

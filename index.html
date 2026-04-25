@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Pro UX Edition</title>
+    <title>UNCHI GF: Golden Spin Edition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -31,12 +31,12 @@
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
         .shake { animation: shake 0.2s 3; }
 
-        /* スピニングアニメーション */
-        @keyframes spin-sync {
+        /* 💩回転用アニメーション */
+        @keyframes unchi-spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
-        .animate-spin-custom { animation: spin-sync 0.8s linear infinite; }
+        .animate-unchi-spin { animation: unchi-spin 0.6s linear infinite; }
     </style>
 </head>
 <body class="bg-toilet text-white font-sans select-none overflow-hidden">
@@ -65,6 +65,7 @@ function App() {
     const [gameState, setGameState] = useState({ players: [], turn: 0, log: "便所へようこそ。", version: 0 });
     const [rooms, setRooms] = useState({});
     
+    // --- 名前設定（デフォルト：プレイヤー1〜4） ---
     const [myName, setMyName] = useState('プレイヤー1');
     const [localNames, setLocalNames] = useState(['プレイヤー2', 'プレイヤー3', 'プレイヤー4']);
     const [localPlayerCount, setLocalPlayerCount] = useState(3);
@@ -72,8 +73,6 @@ function App() {
     
     const [targetOverlay, setTargetOverlay] = useState(null);
     const [effects, setEffects] = useState([]);
-    
-    // 更新ボタンの状態
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     const gun = useRef(Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-ams1.herokuapp.com/gun']));
@@ -98,8 +97,7 @@ function App() {
                 setRooms(prev => { const n = {...prev}; delete n[key]; return n; });
             }
         });
-        // 1.5秒後に更新アニメーションを停止
-        setTimeout(() => setIsRefreshing(false), 1500);
+        setTimeout(() => setIsRefreshing(false), 1200);
     };
 
     useEffect(() => {
@@ -265,7 +263,7 @@ function App() {
                 </div>
             )}
 
-            {/* 4. ロビー画面（更新ボタンの改善） */}
+            {/* 4. ロビー画面（💩が回るように修正） */}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6">
                     <div className="flex justify-between items-end mb-6">
@@ -273,10 +271,10 @@ function App() {
                         <button 
                             onClick={refreshLobby} 
                             disabled={isRefreshing}
-                            className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-2 active:scale-95 transition card-shadow overflow-hidden"
+                            className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition card-shadow"
                         >
-                            <span className={`text-lg ${isRefreshing ? 'animate-spin-custom' : ''}`}>🔄</span>
-                            <span className="font-bold">{isRefreshing ? '更新中...' : '便所を捜索'}</span>
+                            <span className={`text-2xl leading-none inline-block ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span>
+                            <span className="font-bold">{isRefreshing ? '捜索中...' : '便所を捜索'}</span>
                         </button>
                     </div>
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5">
@@ -290,7 +288,7 @@ function App() {
                         {Object.values(rooms).filter(r=>r).length === 0 ? (
                             <div className="text-center py-10">
                                 <p className="text-white/30 text-sm mb-2">稼働中の便所はありません</p>
-                                <p className="text-[10px] text-white/20 italic">上のボタンで再捜索してください</p>
+                                <p className="text-[10px] text-white/20 italic">上の💩で再捜索してください</p>
                             </div>
                         ) : (
                             Object.values(rooms).map(r => r && (

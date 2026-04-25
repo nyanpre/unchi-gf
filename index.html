@@ -378,7 +378,7 @@ function App() {
                 </div>
             )}
             {gameState.winner && (
-                <div className="fixed inset-0 bg-black/45 z-[200] flex flex-col items-center justify-end pb-24 p-6 text-center backdrop-blur-sm animate-in zoom-in duration-500 font-black font-black font-black font-black">
+                <div className="fixed inset-0 bg-black/20 z-[200] flex flex-col items-center justify-end pb-24 p-6 text-center backdrop-blur-sm animate-in zoom-in duration-500 font-black font-black font-black font-black">
                     <div className="text-7xl mb-4 animate-bounce font-black font-black font-black">🏆</div>
                     <h2 className="text-4xl font-black text-yellow-500 mb-2 uppercase italic font-black font-black font-black">勝負あり！</h2>
                     <p className={`text-3xl font-black mb-2 font-black font-black font-black ${gameState.winner.includes('A') ? 'text-red-400' : (gameState.winner.includes('B') ? 'text-blue-400' : 'text-yellow-400')}`}>{gameState.winner}の勝利！</p>

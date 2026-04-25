@@ -3,66 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GOD FIELD: 究極便所</title>
+    <title>UNCHI GOD FIELD: Online</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --bg: #2d1b15; --card-base: #efebe9; --card-rand: #fff9c4; --accent: #ffc107; --mp: #00b0ff; --hp: #66bb6a; --dmg: #ff5252; }
         body { font-family: 'Hiragino Kaku Gothic ProN', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; justify-content: center; overflow: hidden; }
-        .container { width: 100%; max-width: 500px; padding: 10px; box-sizing: border-box; position: relative; height: 100vh; }
+        .container { width: 100%; max-width: 500px; padding: 10px; box-sizing: border-box; position: relative; height: 100vh; display: none; }
         
-        #setup-screen { background: var(--bg); position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-        .input-group { margin: 15px 0; width: 100%; text-align: center; }
-        input { padding: 12px; border-radius: 8px; border: none; width: 80%; margin: 5px; font-size: 16px; }
-        select { padding: 10px; border-radius: 5px; font-size: 16px; }
+        /* 初期メニュー */
+        #menu-screen { background: var(--bg); position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .mode-btn { background: var(--accent); border: none; padding: 20px; margin: 10px; border-radius: 15px; font-weight: bold; width: 250px; font-size: 18px; cursor: pointer; }
+        
+        /* 設定画面 */
+        #setup-screen { background: var(--bg); position: fixed; inset: 0; z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .input-group { margin: 10px 0; width: 100%; text-align: center; }
+        input { padding: 12px; border-radius: 8px; border: none; width: 70%; margin: 5px; font-size: 16px; text-align: center; }
 
+        /* ゲーム画面UI */
         .player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-        .p-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; border: 2px solid transparent; transition: 0.3s; position: relative; }
+        .p-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; border: 2px solid transparent; position: relative; }
         .p-card.active { border-color: var(--accent); background: rgba(255,193,7,0.1); }
         .p-card.dead { opacity: 0.2; filter: grayscale(1); }
         .bar-outer { background: #111; height: 6px; border-radius: 3px; margin: 4px 0; }
         .bar-hp { height: 100%; background: var(--hp); transition: 0.5s; border-radius: 3px; }
         .bar-mp { height: 100%; background: var(--mp); transition: 0.5s; border-radius: 3px; }
 
-        .log { background: rgba(0,0,0,0.4); padding: 12px; border-radius: 10px; height: 70px; overflow-y: auto; margin-bottom: 10px; font-size: 14px; border-left: 4px solid var(--accent); }
+        .log { background: rgba(0,0,0,0.4); padding: 10px; border-radius: 10px; height: 80px; overflow-y: auto; margin-bottom: 10px; font-size: 13px; border-left: 4px solid var(--accent); line-height: 1.4; }
         .hand { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-        .card { height: 110px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; padding: 5px; text-align: center; border: none; box-shadow: 0 4px #999; }
+        .card { height: 110px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; padding: 5px; text-align: center; box-shadow: 0 4px #999; border: none; }
         .card.base { background: var(--card-base); color: #3e2723; }
         .card.rand { background: var(--card-rand); color: #3e2723; }
         .card.disabled { opacity: 0.4; filter: grayscale(1); cursor: not-allowed; box-shadow: none; transform: translateY(4px); }
-        .card:active:not(.disabled) { box-shadow: none; transform: translateY(4px); }
         
-        .c-name { font-weight: bold; font-size: 12px; margin-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.1); width: 90%; }
-        .c-detail { font-size: 10px; line-height: 1.2; text-align: left; width: 100%; padding-left: 5px; }
-        .c-mp-cost { font-size: 11px; font-weight: bold; margin-top: 5px; }
-
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         .target-btn { background: var(--accent); border: none; padding: 15px; margin: 8px; border-radius: 10px; font-weight: bold; width: 220px; font-size: 18px; }
-        
-        .start-btn { background: var(--accent); border: none; padding: 15px 60px; border-radius: 30px; font-weight: bold; font-size: 20px; margin-top: 20px; }
 
-        /* エフェクト用アニメーション */
+        .effect-num { position: absolute; font-weight: bold; font-size: 26px; pointer-events: none; z-index: 10; text-shadow: 2px 2px 0 #000; animation: float-up 1s forwards; }
         @keyframes float-up { 0% { opacity:0; transform: translateY(0); } 20% { opacity:1; } 100% { opacity:0; transform: translateY(-50px); } }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
-        .effect-num { position: absolute; font-weight: bold; font-size: 24px; pointer-events: none; z-index: 10; text-shadow: 2px 2px 0 #000; animation: float-up 1s forwards; }
         .shake { animation: shake 0.2s 3; }
+        .host-badge { background: #e91e63; font-size: 10px; padding: 2px 5px; border-radius: 3px; vertical-align: middle; }
     </style>
 </head>
 <body>
 
-<div id="setup-screen">
-    <h1 style="color:var(--accent)">💩 便所・ゴッドフィールド</h1>
-    <div class="input-group">
-        <select id="p-count" onchange="updateInputs()">
-            <option value="2">2人対戦</option><option value="3" selected>3人対戦</option><option value="4">4人対戦</option>
-        </select>
-    </div>
-    <div id="name-list" class="input-group">
-        <input type="text" id="in0" value="あらい"><input type="text" id="in1" value="ひまだ">
-        <input type="text" id="in2" value="やまさん"><input type="text" id="in3" value="さく" style="display:none">
-    </div>
-    <button class="start-btn" onclick="initGame()">開戦</button>
+<div id="menu-screen">
+    <h1 style="color:var(--accent); font-size: 40px; margin-bottom: 0;">💩 UNCHI</h1>
+    <p style="margin-bottom: 30px;">GOD FIELD</p>
+    <button class="mode-btn" onclick="showSetup('local')">ローカルで遊ぶ</button>
+    <button class="mode-btn" onclick="showSetup('online')">通信対戦で遊ぶ</button>
 </div>
 
-<div class="container">
+<div id="setup-screen">
+    <h2 id="setup-title">設定</h2>
+    
+    <div id="online-inputs" style="display:none;">
+        <div class="input-group">
+            部屋番号 (4桁): <br>
+            <input type="number" id="room-id" placeholder="1234" maxlength="4">
+        </div>
+    </div>
+
+    <div class="input-group">
+        あなたの名前 (最大8文字): <br>
+        <input type="text" id="my-name" placeholder="あらい" maxlength="8">
+    </div>
+
+    <div id="local-setup" style="display:none;">
+        人数: 
+        <select id="p-count" onchange="toggleLocalNames()">
+            <option value="2">2人</option><option value="3" selected>3人</option><option value="4">4人</option>
+        </select>
+        <div id="local-names">
+            <input type="text" id="in1" value="ひまだ" maxlength="8">
+            <input type="text" id="in2" value="やまさん" maxlength="8">
+            <input type="text" id="in3" value="さく" style="display:none" maxlength="8">
+        </div>
+    </div>
+
+    <div id="online-status" style="margin: 10px; font-size: 14px; color: var(--accent);"></div>
+
+    <button id="start-btn" class="mode-btn" onclick="processStart()">参加・開始</button>
+    <button onclick="location.reload()" style="background:none; color:white; border:none; margin-top:10px;">戻る</button>
+</div>
+
+<div class="container" id="game-container">
     <div class="player-grid" id="p-grid"></div>
     <div class="log" id="log-box">便所へようこそ。</div>
     <div class="hand" id="hand-view"></div>
@@ -71,16 +96,16 @@
 <div class="overlay" id="target-ui">
     <h2 id="target-msg">誰に放つ？</h2>
     <div id="target-list"></div>
-    <button onclick="closeTarget()" style="background:none; color:white; border:1px solid white; margin-top:30px; padding:10px 20px; border-radius:5px;">戻る</button>
+    <button onclick="closeTarget()" style="background:none; color:white; border:1px solid white; margin-top:20px; padding:10px 20px; border-radius:5px;">戻る</button>
 </div>
 
 <script>
+    // --- 定数 & 変数 ---
     const BASICS = [
-        { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0, desc: "基本の攻撃" },
-        { name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0, desc: "重い一撃" },
-        { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0, desc: "半分外れる" }
+        { name: "やわらかうんち", atk: 10, mp: 0, acc: 100, heal: 0, mpRec: 0 },
+        { name: "かためうんち", atk: 30, mp: -2, acc: 100, heal: 0, mpRec: 0 },
+        { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
     ];
-
     const RANDOM_POOL = [
         { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0, weight: 20 },
         { name: "きばる", atk: 20, mp: -1, acc: 75, heal: 0, mpRec: 0, multi: 2, weight: 20 },
@@ -90,43 +115,152 @@
         { name: "しょんべん", atk: 50, mp: -2, acc: 100, heal: 20, mpRec: 0, weight: 5 }
     ];
 
+    let gameMode = 'local';
     let players = [];
     let turn = 0;
+    let myIndex = 0; // 通信時の自分の番号
+    let isHost = false;
+    let peer = null;
+    let connections = [];
     let selectedHandIdx = null;
 
-    function updateInputs() {
-        const count = document.getElementById('p-count').value;
-        for(let i=0; i<4; i++) document.getElementById('in'+i).style.display = i < count ? 'inline-block' : 'none';
+    // --- 画面切り替え ---
+    function showSetup(mode) {
+        gameMode = mode;
+        document.getElementById('menu-screen').style.display = 'none';
+        document.getElementById('setup-screen').style.display = 'flex';
+        document.getElementById('local-setup').style.display = mode === 'local' ? 'block' : 'none';
+        document.getElementById('online-inputs').style.display = mode === 'online' ? 'block' : 'none';
+        document.getElementById('setup-title').innerText = mode === 'local' ? 'ローカル設定' : 'オンライン設定';
     }
 
-    function initGame() {
+    function toggleLocalNames() {
+        const count = document.getElementById('p-count').value;
+        for(let i=1; i<4; i++) document.getElementById('in'+i).style.display = i < count ? 'inline-block' : 'none';
+    }
+
+    // --- ゲーム開始処理 ---
+    function processStart() {
+        if (gameMode === 'local') {
+            startLocalGame();
+        } else {
+            startOnlineConnection();
+        }
+    }
+
+    function startLocalGame() {
         const count = parseInt(document.getElementById('p-count').value);
-        players = [];
-        for(let i=0; i<count; i++) {
-            players.push({
-                id: i, name: document.getElementById('in'+i).value || `P${i+1}`,
-                hp: 100, mp: 5, isDead: false,
-                hand: [...BASICS, ...drawUniqueRand(3)]
+        players = [{ name: document.getElementById('my-name').value || "あらい", hp: 100, mp: 5, isDead: false, hand: [] }];
+        for(let i=1; i<count; i++) {
+            players.push({ name: document.getElementById('in'+i).value || `P${i+1}`, hp: 100, mp: 5, isDead: false, hand: [] });
+        }
+        players.forEach(p => p.hand = [...BASICS, ...drawUniqueRand(3)]);
+        launchGame();
+    }
+
+    // --- 通信エンジン (PeerJS) ---
+    function startOnlineConnection() {
+        const roomId = document.getElementById('room-id').value;
+        const myName = document.getElementById('my-name').value || "名無し";
+        if (roomId.length !== 4) return alert("部屋番号は4桁で入力してください");
+
+        document.getElementById('online-status').innerText = "接続中...";
+        // 部屋番号をIDにしてホストを試みる
+        const hostId = `unchi-room-${roomId}-host`;
+        peer = new Peer();
+
+        peer.on('open', (id) => {
+            const conn = peer.connect(hostId);
+            conn.on('open', () => {
+                // 接続できたら自分はクライアント
+                isHost = false;
+                connections.push(conn);
+                conn.send({ type: 'JOIN', name: myName });
+                document.getElementById('online-status').innerText = "ホストに接続しました。開始を待っています...";
+                document.getElementById('start-btn').style.display = 'none';
+            });
+
+            // 接続に失敗（自分がホストになる）
+            setTimeout(() => {
+                if (connections.length === 0) {
+                    setupAsHost(hostId, myName);
+                }
+            }, 2000);
+        });
+    }
+
+    function setupAsHost(hostId, myName) {
+        isHost = true;
+        document.getElementById('online-status').innerText = "あなたがホストです。参加を待っています...";
+        document.getElementById('start-btn').innerText = "ゲーム開始宣言";
+        document.getElementById('start-btn').onclick = broadcastStart;
+
+        // ホストとしてIDを固定して再作成
+        if(peer) peer.destroy();
+        peer = new Peer(hostId);
+        
+        players = [{ id: 0, name: myName, hp: 100, mp: 5, isDead: false, hand: [] }];
+        
+        peer.on('connection', (conn) => {
+            conn.on('data', (data) => {
+                if (data.type === 'JOIN' && players.length < 4) {
+                    const newId = players.length;
+                    players.push({ id: newId, name: data.name, hp: 100, mp: 5, isDead: false, hand: [] });
+                    connections.push(conn);
+                    document.getElementById('online-status').innerText = `参加者: ${players.map(p=>p.name).join(', ')}`;
+                }
+                if (data.type === 'ACTION') {
+                    handleOnlineAction(data);
+                }
+            });
+        });
+    }
+
+    function broadcastStart() {
+        if(players.length < 2) return alert("2人以上必要です");
+        players.forEach(p => p.hand = [...BASICS, ...drawUniqueRand(3)]);
+        connections.forEach(c => c.send({ type: 'START', players: players }));
+        launchGame();
+    }
+
+    function launchGame() {
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('game-container').style.display = 'block';
+        if (!isHost && gameMode === 'online') {
+            // クライアント側
+            peer.on('connection', (conn) => {
+                conn.on('data', (data) => {
+                    if (data.type === 'START') {
+                        players = data.players;
+                        myIndex = players.findIndex(p => p.name === document.getElementById('my-name').value);
+                        launchGame();
+                    }
+                    if (data.type === 'UPDATE') {
+                        syncState(data);
+                    }
+                });
             });
         }
-        document.getElementById('setup-screen').style.display = 'none';
         render();
     }
 
+    function syncState(data) {
+        players = data.players;
+        turn = data.turn;
+        document.getElementById('log-box').innerHTML = data.log;
+        if(data.effect) showEffect(data.effect.id, data.effect.val, data.effect.type);
+        render();
+    }
+
+    // --- ゲームロジック ---
     function drawUniqueRand(count) {
-        let results = [];
-        let pool = [...RANDOM_POOL];
+        let results = [], pool = [...RANDOM_POOL];
         for(let i=0; i<count; i++) {
-            let totalWeight = pool.reduce((s, c) => s + c.weight, 0);
-            let rand = Math.random() * totalWeight;
-            let sum = 0;
+            let total = pool.reduce((s, c) => s + c.weight, 0);
+            let rand = Math.random() * total, sum = 0;
             for(let j=0; j<pool.length; j++) {
                 sum += pool[j].weight;
-                if(rand <= sum) {
-                    results.push({...pool[j]});
-                    pool.splice(j, 1); // 選ばれたカードを除去して重複を防ぐ
-                    break;
-                }
+                if(rand <= sum) { results.push({...pool[j]}); pool.splice(j, 1); break; }
             }
         }
         return results;
@@ -136,7 +270,7 @@
         const grid = document.getElementById('p-grid');
         grid.innerHTML = players.map((p, i) => `
             <div id="p-card-${i}" class="p-card ${i === turn ? 'active' : ''} ${p.isDead ? 'dead' : ''}">
-                <strong>${p.name}</strong><br>
+                <strong>${p.name}</strong> ${isHost && i===0 && gameMode==='online' ? '<span class="host-badge">親</span>' : ''}<br>
                 HP:${p.hp} MP:${p.mp}
                 <div class="bar-outer"><div class="bar-hp" style="width:${p.hp}%"></div></div>
                 <div class="bar-outer"><div class="bar-mp" style="width:${p.mp*10}%"></div></div>
@@ -144,29 +278,28 @@
         `).join('');
 
         const handView = document.getElementById('hand-view');
+        // 通信時は自分のターン以外カードを触れない
+        const isMyTurn = (gameMode === 'local') || (gameMode === 'online' && turn === myIndex);
+        
         handView.innerHTML = players[turn].hand.map((c, i) => {
             const canPay = (players[turn].mp + (c.mp < 0 ? c.mp : 0)) >= 0;
+            const clickEvent = (isMyTurn && canPay) ? `onclick="handleCard(${i})"` : '';
             return `
-                <div class="card ${i < 3 ? 'base' : 'rand'} ${canPay ? '' : 'disabled'}" onclick="handleCard(${i})">
+                <div class="card ${i < 3 ? 'base' : 'rand'} ${(isMyTurn && canPay) ? '' : 'disabled'}" ${clickEvent}>
                     <div class="c-name">${c.name}</div>
                     <div class="c-detail">
-                        ${c.atk > 0 ? `威力: ${c.atk}<br>` : ''}
-                        ${c.heal > 0 ? `回復: ${c.heal}<br>` : ''}
-                        ${c.mpRec > 0 ? `MP: +${c.mpRec}<br>` : ''}
-                        命中: ${c.acc}%
+                        ${c.atk > 0 ? `威力: ${c.atk}<br>` : ''}${c.heal > 0 ? `回復: ${c.heal}<br>` : ''}
+                        ${c.mpRec > 0 ? `MP: +${c.mpRec}<br>` : ''}命中: ${c.acc}%
                     </div>
-                    <div class="c-mp-cost" style="color:${c.mp < 0 ? '#d32f2f' : '#333'}">
-                        ${c.mp < 0 ? `消費MP: ${Math.abs(c.mp)}` : 'MP消費なし'}
-                    </div>
+                    <div style="font-size:10px; margin-top:5px;">${c.mp < 0 ? '消費MP:'+Math.abs(c.mp) : '消費0'}</div>
                 </div>
             `;
         }).join('');
     }
 
     function handleCard(idx) {
-        const card = players[turn].hand[idx];
-        if((players[turn].mp + (card.mp < 0 ? card.mp : 0)) < 0) return;
         selectedHandIdx = idx;
+        const card = players[turn].hand[idx];
         if(card.atk > 0 && !card.multi) openTarget();
         else executeCard(turn);
     }
@@ -181,33 +314,24 @@
 
     function closeTarget() { document.getElementById('target-ui').style.display = 'none'; }
 
-    function showEffect(pId, val, type) {
-        const card = document.getElementById(`p-card-${pId}`);
-        const el = document.createElement('div');
-        el.className = 'effect-num';
-        el.style.color = type === 'dmg' ? 'var(--dmg)' : (type === 'heal' ? 'var(--hp)' : 'var(--mp)');
-        el.style.left = (20 + Math.random() * 50) + '%';
-        el.style.top = (20 + Math.random() * 40) + '%';
-        el.innerText = (type === 'dmg' ? '-' : '+') + val;
-        card.appendChild(el);
-        if(type === 'dmg') {
-            card.classList.add('shake');
-            setTimeout(() => card.classList.remove('shake'), 600);
-        }
-        setTimeout(() => el.remove(), 1000);
-    }
-
     function executeCard(targetIdx) {
+        closeTarget();
+        if (gameMode === 'online' && turn === myIndex && !isHost) {
+            // クライアントからホストへアクション送信
+            connections[0].send({ type: 'ACTION', cardIdx: selectedHandIdx, targetIdx: targetIdx });
+            return;
+        }
+        
+        // ホストまたはローカルでの処理
         const attacker = players[turn];
         const card = attacker.hand[selectedHandIdx];
-        closeTarget();
-
         attacker.mp = Math.min(10, Math.max(0, attacker.mp + card.mp));
         let logMsg = `【${attacker.name}】の${card.name}！ `;
 
         if(card.mpRec > 0) {
             attacker.mp = Math.min(10, attacker.mp + card.mpRec);
             showEffect(turn, card.mpRec, 'mp');
+            broadcastEffect(turn, card.mpRec, 'mp');
         }
 
         if(card.multi) {
@@ -216,8 +340,14 @@
                 const randomEnemy = enemies[Math.floor(Math.random() * enemies.length)];
                 if(Math.random() * 100 <= card.acc) {
                     randomEnemy.hp = Math.max(0, randomEnemy.hp - card.atk);
-                    showEffect(randomEnemy.id, card.atk, 'dmg');
+                    showEffect(players.indexOf(randomEnemy), card.atk, 'dmg');
+                    broadcastEffect(players.indexOf(randomEnemy), card.atk, 'dmg');
+                    logMsg += `<br>→ ${randomEnemy.name}に${card.atk}ダメ！`;
                     if(randomEnemy.hp <= 0) randomEnemy.isDead = true;
+                } else {
+                    showEffect(players.indexOf(randomEnemy), 0, 'dmg');
+                    broadcastEffect(players.indexOf(randomEnemy), 0, 'dmg');
+                    logMsg += `<br>→ ${randomEnemy.name}にはスカしっぺ`;
                 }
             }
         } else {
@@ -225,31 +355,44 @@
                 if(card.atk > 0) {
                     players[targetIdx].hp = Math.max(0, players[targetIdx].hp - card.atk);
                     showEffect(targetIdx, card.atk, 'dmg');
+                    broadcastEffect(targetIdx, card.atk, 'dmg');
+                    logMsg += `${players[targetIdx].name}に${card.atk}ダメ！`;
                     if(players[targetIdx].hp <= 0) players[targetIdx].isDead = true;
                 }
                 if(card.heal > 0) {
                     attacker.hp = Math.min(100, attacker.hp + card.heal);
                     showEffect(turn, card.heal, 'heal');
+                    broadcastEffect(turn, card.heal, 'heal');
+                    logMsg += `HP${card.heal}回復！`;
                 }
-            } else { logMsg += `スカ！`; }
+            } else {
+                if(card.atk > 0) {
+                    showEffect(targetIdx, 0, 'dmg');
+                    broadcastEffect(targetIdx, 0, 'dmg');
+                }
+                logMsg += `スカした！`;
+            }
         }
 
         document.getElementById('log-box').innerHTML = logMsg;
-        
-        // 補充ロジック：ランダム枠のみ重複無しで引き直し
-        if(selectedHandIdx < 3) {
-            attacker.hand[selectedHandIdx] = {...BASICS[selectedHandIdx]};
-        } else {
-            // 現在持っている他の2枚のランダムカードを把握
-            const otherRandNames = attacker.hand.filter((_, i) => i >= 3 && i !== selectedHandIdx).map(c => c.name);
-            let newCard;
-            do {
-                newCard = drawUniqueRand(1)[0];
-            } while (otherRandNames.includes(newCard.name));
-            attacker.hand[selectedHandIdx] = newCard;
-        }
+        drawNext(attacker);
 
-        if(checkWin()) setTimeout(nextTurn, 1500);
+        if(checkWin()) {
+            setTimeout(() => {
+                nextTurn();
+                if(isHost) broadcastUpdate(logMsg);
+            }, 1500);
+        }
+    }
+
+    function drawNext(attacker) {
+        if(selectedHandIdx < 3) attacker.hand[selectedHandIdx] = {...BASICS[selectedHandIdx]};
+        else {
+            const others = attacker.hand.filter((_, i) => i >= 3 && i !== selectedHandIdx).map(c => c.name);
+            let next;
+            do { next = drawUniqueRand(1)[0]; } while (others.includes(next.name));
+            attacker.hand[selectedHandIdx] = next;
+        }
     }
 
     function nextTurn() {
@@ -260,13 +403,42 @@
     function checkWin() {
         const alive = players.filter(p => !p.isDead);
         if(alive.length === 1) {
-            document.getElementById('log-box').innerHTML = `<strong>勝者：${alive[0].name}！</strong>`;
-            setTimeout(() => { alert("優勝：" + alive[0].name); location.reload(); }, 2000);
+            const msg = `勝者：${alive[0].name}！`;
+            document.getElementById('log-box').innerHTML = `<strong>${msg}</strong>`;
+            if(isHost) broadcastUpdate(msg);
+            setTimeout(() => { alert(msg); location.reload(); }, 2000);
             return false;
         }
         return true;
     }
-    updateInputs();
+
+    // --- 通信同期用ヘルパー ---
+    function handleOnlineAction(data) {
+        selectedHandIdx = data.cardIdx;
+        executeCard(data.targetIdx);
+    }
+
+    function broadcastUpdate(log) {
+        connections.forEach(c => c.send({ type: 'UPDATE', players: players, turn: turn, log: log }));
+    }
+
+    function broadcastEffect(id, val, type) {
+        if(!isHost) return;
+        connections.forEach(c => c.send({ type: 'UPDATE', players: players, turn: turn, effect: {id, val, type}, log: document.getElementById('log-box').innerHTML }));
+    }
+
+    function showEffect(pId, val, type) {
+        const card = document.getElementById(`p-card-${pId}`);
+        if(!card) return;
+        const el = document.createElement('div');
+        el.className = 'effect-num';
+        el.style.color = type === 'dmg' ? 'var(--dmg)' : (type === 'heal' ? 'var(--hp)' : 'var(--mp)');
+        el.style.left = '40%'; el.style.top = '30%';
+        el.innerText = (type === 'dmg' ? '-' : '+') + val;
+        card.appendChild(el);
+        if(type === 'dmg' && val > 0) card.classList.add('shake');
+        setTimeout(() => { el.remove(); card.classList.remove('shake'); }, 1000);
+    }
 </script>
 </body>
 </html>

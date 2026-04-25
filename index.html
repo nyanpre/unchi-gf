@@ -1,9 +1,9 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Toilet Master Edition</title>
+    <title>UNCHI GF: Absolute Fix Edition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -99,6 +99,28 @@ function App() {
         setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
     };
 
+    // --- CPU自動行動ロジックの修正 ---
+    useEffect(() => {
+        if (gameState.winner || view !== 'game') return;
+        const activePlayer = gameState.players[gameState.turn];
+        if (activePlayer && activePlayer.isCPU && !activePlayer.isDead) {
+            const timer = setTimeout(() => {
+                const playable = activePlayer.hand.map((c, i) => (activePlayer.mp + (c.mp < 0 ? c.mp : 0) >= 0 ? i : -1)).filter(i => i !== -1);
+                if (playable.length === 0) return processBattle(gameState.turn, 0, gameState.turn); // 緊急避難
+                
+                const cardIdx = playable[Math.floor(Math.random() * playable.length)];
+                const card = activePlayer.hand[cardIdx];
+                let targetIdx = gameState.turn;
+                if (card.atk && !card.multi) {
+                    const enemies = gameState.players.filter((p, idx) => !p.isDead && idx !== gameState.turn && (gameState.battleFormat === '2v2' ? p.team !== activePlayer.team : true));
+                    if (enemies.length > 0) targetIdx = gameState.players.indexOf(enemies[Math.floor(Math.random() * enemies.length)]);
+                }
+                processBattle(gameState.turn, cardIdx, targetIdx);
+            }, 1500);
+            return () => clearTimeout(timer);
+        }
+    }, [gameState.turn, gameState.winner, gameState.version, view]);
+
     const handleCreateRoom = async () => {
         if (!sb) return alert("準備中...");
         setMode('online'); isHost.current = true;
@@ -131,12 +153,23 @@ function App() {
         }).subscribe((status) => { if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'join', payload: { name: myName, id: myId.current, team: myTeam } }); setView('waiting'); } });
     };
 
+    // --- バトルロジックとMP回復の修正 ---
     const processBattle = (aIdx, cIdx, tIdx) => {
         let s = JSON.parse(JSON.stringify(gameState));
         const attacker = s.players[aIdx];
         const card = attacker.hand[cIdx];
         let log = `【${attacker.name}】の${card.name}！`;
-        attacker.mp += card.mp;
+        
+        // MP消費
+        attacker.mp += (card.mp || 0);
+        
+        // MP回復（MP+x 表記のカード）
+        if (card.mpRec && card.mpRec > 0) {
+            attacker.mp = Math.min(10, attacker.mp + card.mpRec);
+            triggerEffect(aIdx, card.mpRec, 'mp');
+            log += `<br>→MPを${card.mpRec}回復！`;
+        }
+
         if (card.multi) {
             for(let i=0; i<2; i++){
                 const targets = s.players.filter((p,idx) => !p.isDead && idx !== aIdx);
@@ -154,6 +187,7 @@ function App() {
                 if(card.heal) { attacker.hp = Math.min(100, attacker.hp + card.heal); log += `HP${card.heal}回復`; triggerEffect(aIdx, card.heal, 'heal'); }
             } else { if(card.atk) triggerEffect(tIdx, 0, 'dmg'); log += `外れた！`; }
         }
+
         if (s.battleFormat === '2v2') {
             const teamADead = s.players.filter(p => p.team === 0 && !p.isDead).length === 0;
             const teamBDead = s.players.filter(p => p.team === 1 && !p.isDead).length === 0;
@@ -162,6 +196,7 @@ function App() {
             const alive = s.players.filter(p => !p.isDead);
             if (alive.length === 1) s.winner = alive[0].name;
         }
+
         if (!s.winner) {
             attacker.hand[cIdx] = (cIdx < 3) ? {...BASICS[cIdx]} : RANDOM_POOL[Math.floor(Math.random()*RANDOM_POOL.length)];
             let next = aIdx; do { next = (next + 1) % s.players.length; } while (s.players[next].isDead);
@@ -224,24 +259,25 @@ function App() {
             )}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6 font-black">
-                    <div className="flex justify-between items-end mb-6"><h2 className="text-2xl font-bold text-yellow-500 uppercase tracking-widest">便所一覧</h2><button onClick={()=>{setIsRefreshing(true); setTimeout(()=>setIsRefreshing(false), 1000);}} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition shadow-sm"><span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span><span>捜索</span></button></div>
+                    <div className="flex justify-between items-end mb-6 font-black"><h2 className="text-2xl font-bold text-yellow-500 uppercase tracking-widest">便所一覧</h2><button onClick={()=>{setIsRefreshing(true); setTimeout(()=>setIsRefreshing(false), 1000);}} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition shadow-sm"><span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span><span>捜索</span></button></div>
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5 text-center shadow-inner">
                         <select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="w-full bg-[#3e2723] p-2 rounded-lg mb-2 font-bold text-xs text-center"><option value="2p">2人</option><option value="3p">3人</option><option value="4p">4人(うんちロワイヤル)</option><option value="2v2">4人(チーム戦)</option></select>
                         <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm text-center font-bold outline-none" placeholder="部屋名を入力" />
                         <div className="flex flex-col gap-2 mt-2">
                             <button onClick={handleCreateRoom} className="w-full bg-green-600 p-3 rounded-xl font-bold card-shadow font-black text-white">部屋を作る</button>
-                            {/* オンラインロビーの戻るボタンを追加 */}
-                            <button onClick={() => setView('modeSelect')} className="w-full py-2 text-white/50 text-xs font-bold underline active:scale-95 transition">トイレ選択に戻る</button>
+                            <button onClick={() => setView('modeSelect')} className="w-full py-2 text-white/50 text-xs font-bold underline active:scale-95 transition">戻る</button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto space-y-3 pr-1">{Object.values(rooms).length === 0 ? <div className="text-center py-10 opacity-30 italic font-bold">稼働中の便所はありません</div> : 
-                        Object.values(rooms).map(r => (
-                            <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:bg-white/20 border border-white/5 transition-all">
-                                <div><div className="font-bold text-yellow-500">{r.roomName}</div><div className="text-[10px] text-white/40 font-bold">{r.format === '2v2' ? 'チーム戦' : (r.format==='4p'?'ロワイヤル':r.format)} / 主: {r.hostName}</div></div>
-                                <div className="text-xs font-bold bg-yellow-600 text-black px-4 py-2 rounded-xl shadow-sm font-black">入る</div>
-                            </div>
-                        ))
-                    }</div>
+                    <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                        {Object.values(rooms).length === 0 ? <div className="text-center py-10 opacity-30 italic font-bold">稼働中の便所はありません</div> : 
+                            Object.values(rooms).map(r => (
+                                <div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:bg-white/20 border border-white/5 transition-all">
+                                    <div><div className="font-bold text-yellow-500">{r.roomName}</div><div className="text-[10px] text-white/40 font-bold">{r.format === '2v2' ? 'チーム戦' : (r.format==='4p'?'ロワイヤル':r.format)} / 主: {r.hostName}</div></div>
+                                    <div className="text-xs font-bold bg-yellow-600 text-black px-4 py-2 rounded-xl shadow-sm font-black">入る</div>
+                                </div>
+                            ))
+                        }
+                    </div>
                 </div>
             )}
             {view === 'waiting' && (
@@ -253,7 +289,7 @@ function App() {
                             </div>
                         ))}</div>
                     </div>
-                    {isHost.current ? <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl font-black">トイレに行く</button> : <p className="animate-pulse text-yellow-500 font-bold font-black">主がトイレに行くのを待っています...</p>}
+                    {isHost.current ? <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl font-black font-black">トイレに行く</button> : <p className="animate-pulse text-yellow-500 font-bold font-black">主がトイレに行くのを待っています...</p>}
                     <button onClick={returnToMenu} className="text-white/30 text-xs mt-10 underline font-bold uppercase">退出する</button>
                 </div>
             )}
@@ -304,7 +340,7 @@ function App() {
                             参加者: {gameState.players.filter(p => (gameState.winner === "Aチーム" || gameState.winner === "Aチームの勝利" ? p.team === 0 : p.team === 1)).map(p => p.name).join(' & ')}
                         </div>
                     )}
-                    <button onClick={returnToMenu} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl shadow-lg uppercase active:translate-y-1 transition-all font-black">メニューへ戻る</button>
+                    <button onClick={returnToMenu} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl shadow-lg active:translate-y-1 transition-all font-black">メニューへ戻る</button>
                 </div>
             )}
         </div>

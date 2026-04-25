@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Professional Edition</title>
+    <title>UNCHI GF: Sequence Edition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -58,11 +58,11 @@ function App() {
     const [gameState, setGameState] = useState({ players: [], turn: 0, log: "便所へようこそ。", version: 0 });
     const [rooms, setRooms] = useState({});
     
-    // --- 名前設定（デフォルト値：プレイヤー1〜4） ---
+    // --- 名前設定 ---
     const [myName, setMyName] = useState('プレイヤー1');
     const [localNames, setLocalNames] = useState(['プレイヤー2', 'プレイヤー3', 'プレイヤー4']);
     const [localPlayerCount, setLocalPlayerCount] = useState(3);
-    const [roomName, setRoomName] = useState('あらいの便所');
+    const [roomName, setRoomName] = useState('');
     
     const [targetOverlay, setTargetOverlay] = useState(null);
     const [effects, setEffects] = useState([]);
@@ -94,7 +94,6 @@ function App() {
 
     const deleteRoom = () => { if (isHost.current && currentRoomId.current) gun.current.get('ugf-lobby-final-2026').get(currentRoomId.current).put(null); };
 
-    // --- ゲーム開始（ローカル） ---
     const startLocalGame = () => {
         setMode('local'); isHost.current = true;
         const allNames = [myName, ...localNames].slice(0, localPlayerCount);
@@ -103,7 +102,6 @@ function App() {
         setView('game');
     };
 
-    // --- 通信処理 ---
     const handleCreateRoom = async () => {
         setMode('online');
         const pid = `ugf-h-${Math.random().toString(36).substring(7)}`;
@@ -111,7 +109,7 @@ function App() {
         peer.current = new Peer(pid);
         peer.current.on('open', () => {
             isHost.current = true; currentRoomId.current = pid;
-            gun.current.get('ugf-lobby-final-2026').get(pid).put({ name: roomName, host: myName, hostId: pid, ts: Date.now() });
+            gun.current.get('ugf-lobby-final-2026').get(pid).put({ name: roomName || `${myName}の便所`, host: myName, hostId: pid, ts: Date.now() });
             setGameState(s => ({ ...s, players: [{ name: myName, hp: 100, mp: 5, isDead: false, hand: [], peerId: pid }] }));
             setView('waiting');
             peer.current.on('connection', conn => { conn.on('open', () => { conns.current.push(conn); conn.on('data', data => handleData(data, conn)); }); });
@@ -189,25 +187,46 @@ function App() {
 
     return (
         <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col">
+            
+            {/* 1. 名前入力画面 (menu) */}
             {view === 'menu' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
-                    <h1 className="text-5xl font-black text-yellow-500 mb-8 drop-shadow-lg">UNCHI GF</h1>
-                    <div className="w-full space-y-4 text-center">
-                        <div className="mb-4">
-                            <p className="text-sm mb-1 text-white/50">自分の名前を入力</p>
-                            <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center" placeholder="プレイヤー1" />
+                    <h1 className="text-5xl font-black text-yellow-500 mb-12 drop-shadow-lg">UNCHI GF</h1>
+                    <div className="w-full space-y-6 text-center">
+                        <div>
+                            <p className="text-sm mb-2 text-white/50 font-bold">あなたの名前を入力してください</p>
+                            <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center text-xl font-bold border-2 border-white/5" placeholder="プレイヤー1" maxLength="8" />
                         </div>
-                        <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-4 rounded-2xl font-bold">ローカルで遊ぶ</button>
-                        <button onClick={() => setView('lobby')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">オンライン対戦</button>
+                        <button onClick={() => setView('modeSelect')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">次へ</button>
                     </div>
                 </div>
             )}
 
+            {/* 2. モード選択画面 (modeSelect) */}
+            {view === 'modeSelect' && (
+                <div className="flex-1 flex flex-col items-center justify-center">
+                    <h2 className="text-2xl font-bold text-yellow-500 mb-8">モードを選択</h2>
+                    <div className="w-full space-y-4">
+                        <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-5 rounded-2xl font-bold text-xl hover:bg-white/20 transition">ローカルで遊ぶ</button>
+                        <button onClick={() => { setRoomName(`${myName}の便所`); setView('lobby'); }} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">オンライン対戦</button>
+                        <button onClick={() => setView('menu')} className="text-white/50 text-sm mt-4 w-full">戻る</button>
+                    </div>
+                </div>
+            )}
+
+            {/* 3. ローカル設定画面 (localSetup) */}
             {view === 'localSetup' && (
-                <div id="setup-screen" className="flex-1 flex flex-col items-center justify-center p-4">
+                <div className="flex-1 flex flex-col items-center justify-center p-4">
                     <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 ローカル設定</h1>
                     <div className="w-full space-y-4 text-center">
-                        <div>人数：<select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-white/10 p-2 rounded-lg ml-2"><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option></select></div>
+                        <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                            人数：
+                            <select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-[#3e2723] p-2 rounded-lg ml-2 border border-white/20">
+                                <option value="2">2人</option>
+                                <option value="3">3人</option>
+                                <option value="4">4人</option>
+                            </select>
+                        </div>
                         <div className="space-y-2">
                             <input value={myName} onChange={e => setMyName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-center" />
                             <input value={localNames[0]} onChange={e => setLocalNames([e.target.value, localNames[1], localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" />
@@ -215,22 +234,30 @@ function App() {
                             {localPlayerCount >= 4 && <input value={localNames[2]} onChange={e => setLocalNames([localNames[0], localNames[1], e.target.value])} className="w-full bg-white/10 p-3 rounded-xl text-center" />}
                         </div>
                         <button onClick={startLocalGame} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl card-shadow text-xl">開戦</button>
-                        <button onClick={() => setView('menu')} className="text-white/50 text-sm">戻る</button>
+                        <button onClick={() => setView('modeSelect')} className="text-white/50 text-sm">戻る</button>
                     </div>
                 </div>
             )}
 
+            {/* 4. ロビー画面 (lobby) */}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6">
-                    <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-yellow-500">便所一覧</h2><button onClick={()=>setView('menu')} className="text-white/50">戻る</button></div>
-                    <div className="bg-white/5 p-4 rounded-2xl mb-6 flex gap-2"><input value={roomName} onChange={e=>setRoomName(e.target.value)} className="flex-1 bg-white/10 p-3 rounded-xl text-sm" placeholder="部屋名" /><button onClick={handleCreateRoom} className="bg-green-600 px-6 py-2 rounded-xl font-bold">作成</button></div>
+                    <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-yellow-500">便所一覧</h2><button onClick={()=>setView('modeSelect')} className="text-white/50">戻る</button></div>
+                    <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3">
+                        <p className="text-xs text-white/40 font-bold ml-1">部屋を作る</p>
+                        <div className="flex gap-2">
+                            <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="flex-1 bg-white/10 p-3 rounded-xl text-sm" placeholder={`${myName}の便所`} />
+                            <button onClick={handleCreateRoom} className="bg-green-600 px-6 py-2 rounded-xl font-bold">作成</button>
+                        </div>
+                    </div>
                     <div className="flex-1 overflow-y-auto space-y-3">
                         {Object.values(rooms).filter(r=>r).length === 0 && <p className="text-center text-white/30 py-10">稼働中の便所はありません</p>}
-                        {Object.values(rooms).map(r => r && (<div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5"><div><div className="font-bold text-yellow-500">{r.name}</div><div className="text-[10px] text-white/40">主: {r.host}</div></div><div className="text-xs font-bold bg-yellow-600 text-black px-3 py-1 rounded-full">参加</div></div>))}
+                        {Object.values(rooms).map(r => r && (<div key={r.hostId} onClick={()=>handleJoinRoom(r)} className="bg-white/10 p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform border border-white/5 hover:bg-white/10"><div><div className="font-bold text-yellow-500">{r.name}</div><div className="text-[10px] text-white/40">主: {r.host}</div></div><div className="text-xs font-bold bg-yellow-600 text-black px-3 py-1 rounded-full">参加</div></div>))}
                     </div>
                 </div>
             )}
 
+            {/* 5. 待機画面 (waiting) */}
             {view === 'waiting' && (
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5"><h2 className="text-xl font-bold mb-6 text-yellow-500">待機中</h2>{gameState.players.map((p,i) => <div key={i} className="text-xl font-bold my-2">{p.name} {i===0 && '👑'}</div>)}</div>
@@ -238,8 +265,9 @@ function App() {
                 </div>
             )}
 
+            {/* 6. ゲーム画面 (game) */}
             {view === 'game' && (
-                <div className="flex flex-col h-full">
+                <div className="flex flex-col h-full pt-2">
                     <div className="grid grid-cols-2 gap-2 mb-4">
                         {gameState.players.map((p, i) => (
                             <div key={i} id={`p-card-${i}`} className={`p-3 rounded-2xl border-2 transition-all relative ${gameState.turn === i ? 'p-card-active scale-105' : 'border-transparent p-card-bg'} ${p.isDead ? 'opacity-20' : ''}`}>
@@ -276,8 +304,9 @@ function App() {
                 </div>
             )}
 
+            {/* ターゲット選択 */}
             {targetOverlay !== null && (
-                <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center"><h2 className="text-xl font-bold mb-6 text-yellow-500">誰を攻撃する？</h2><div className="w-full space-y-3">{gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (<button key={i} onClick={() => { if (mode === 'local' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else conns.current[0].send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i }); setTargetOverlay(null); }} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl text-lg">{p.name}</button>))}<button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 font-bold">戻る</button></div></div>
+                <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center"><h2 className="text-xl font-bold mb-6 text-yellow-500">誰を攻撃する？</h2><div className="w-full space-y-3">{gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (<button key={i} onClick={() => { if (mode === 'local' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else conns.current[0].send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i }); setTargetOverlay(null); }} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl text-lg">{p.name}へ放つ</button>))}<button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 font-bold">戻る</button></div></div>
             )}
         </div>
     );

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Absolute Fix Edition</title>
+    <title>UNCHI GF: Absolute Rules</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -43,12 +43,12 @@ const BASICS = [
     { name: "下痢", atk: 30, mp: -1, acc: 50, heal: 0, mpRec: 0 }
 ];
 const RANDOM_POOL = [
-    { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0, weight: 20 },
-    { name: "きばる", atk: 20, mp: -1, acc: 75, heal: 0, mpRec: 0, multi: 2, weight: 20 },
-    { name: "宿便", atk: 50, mp: -3, acc: 75, heal: 0, mpRec: 0, weight: 10 },
-    { name: "ペーパー補充", atk: 0, mp: 0, acc: 100, heal: 0, mpRec: 3, weight: 30 },
-    { name: "野グソ", atk: 20, mp: 0, acc: 100, heal: 0, mpRec: 2, weight: 15 },
-    { name: "しょんべん", atk: 50, mp: -3, acc: 100, heal: 20, mpRec: 0, weight: 5 }
+    { name: "紙で拭く", atk: 0, mp: -1, acc: 100, heal: 20, mpRec: 0 },
+    { name: "きばる", atk: 20, mp: -1, acc: 75, heal: 0, mpRec: 0, multi: 2 },
+    { name: "宿便", atk: 50, mp: -3, acc: 75, heal: 0, mpRec: 0 },
+    { name: "ペーパー補充", atk: 0, mp: 0, acc: 100, heal: 0, mpRec: 3 },
+    { name: "野グソ", atk: 20, mp: 0, acc: 100, heal: 0, mpRec: 2 },
+    { name: "しょんべん", atk: 50, mp: -3, acc: 100, heal: 20, mpRec: 0 }
 ];
 
 function App() {
@@ -93,22 +93,33 @@ function App() {
         return () => { lobbyChannel.unsubscribe(); };
     }, [sb]);
 
+    // --- ユニーク・シャッフル補充ロジック ---
+    const drawUniqueCards = (currentHand, count) => {
+        const currentNames = currentHand.map(c => c?.name);
+        const shuffledPool = [...RANDOM_POOL].sort(() => Math.random() - 0.5);
+        const uniqueDraws = [];
+        for (const card of shuffledPool) {
+            if (!currentNames.includes(card.name) && !uniqueDraws.find(u => u.name === card.name)) {
+                uniqueDraws.push(card);
+            }
+            if (uniqueDraws.length === count) break;
+        }
+        return uniqueDraws;
+    };
+
     const triggerEffect = (id, val, type) => {
         const key = Math.random();
         setEffects(prev => [...prev, { id, val, type, key }]);
         setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
     };
 
-    // --- CPU自動行動ロジックの修正 ---
     useEffect(() => {
         if (gameState.winner || view !== 'game') return;
         const activePlayer = gameState.players[gameState.turn];
         if (activePlayer && activePlayer.isCPU && !activePlayer.isDead) {
             const timer = setTimeout(() => {
                 const playable = activePlayer.hand.map((c, i) => (activePlayer.mp + (c.mp < 0 ? c.mp : 0) >= 0 ? i : -1)).filter(i => i !== -1);
-                if (playable.length === 0) return processBattle(gameState.turn, 0, gameState.turn); // 緊急避難
-                
-                const cardIdx = playable[Math.floor(Math.random() * playable.length)];
+                const cardIdx = playable.length > 0 ? playable[Math.floor(Math.random() * playable.length)] : 0;
                 const card = activePlayer.hand[cardIdx];
                 let targetIdx = gameState.turn;
                 if (card.atk && !card.multi) {
@@ -116,7 +127,7 @@ function App() {
                     if (enemies.length > 0) targetIdx = gameState.players.indexOf(enemies[Math.floor(Math.random() * enemies.length)]);
                 }
                 processBattle(gameState.turn, cardIdx, targetIdx);
-            }, 1500);
+            }, 1200);
             return () => clearTimeout(timer);
         }
     }, [gameState.turn, gameState.winner, gameState.version, view]);
@@ -153,22 +164,13 @@ function App() {
         }).subscribe((status) => { if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'join', payload: { name: myName, id: myId.current, team: myTeam } }); setView('waiting'); } });
     };
 
-    // --- バトルロジックとMP回復の修正 ---
     const processBattle = (aIdx, cIdx, tIdx) => {
         let s = JSON.parse(JSON.stringify(gameState));
         const attacker = s.players[aIdx];
         const card = attacker.hand[cIdx];
         let log = `【${attacker.name}】の${card.name}！`;
-        
-        // MP消費
-        attacker.mp += (card.mp || 0);
-        
-        // MP回復（MP+x 表記のカード）
-        if (card.mpRec && card.mpRec > 0) {
-            attacker.mp = Math.min(10, attacker.mp + card.mpRec);
-            triggerEffect(aIdx, card.mpRec, 'mp');
-            log += `<br>→MPを${card.mpRec}回復！`;
-        }
+        attacker.mp += card.mp;
+        if (card.mpRec) { attacker.mp = Math.min(10, attacker.mp + card.mpRec); triggerEffect(aIdx, card.mpRec, 'mp'); }
 
         if (card.multi) {
             for(let i=0; i<2; i++){
@@ -177,13 +179,18 @@ function App() {
                 const target = targets[Math.floor(Math.random() * targets.length)];
                 const rIdx = s.players.indexOf(target);
                 if (Math.random()*100 <= card.acc) {
-                    s.players[rIdx].hp -= card.atk; log += `<br>→${target.name}に${card.atk}ダメ`;
+                    s.players[rIdx].hp = Math.max(0, s.players[rIdx].hp - card.atk); // HP下限ガード
+                    log += `<br>→${target.name}に${card.atk}ダメ`;
                     triggerEffect(rIdx, card.atk, 'dmg'); if(s.players[rIdx].hp <= 0) s.players[rIdx].isDead = true;
                 } else { log += `<br>→${target.name}にはスカしっぺ`; triggerEffect(rIdx, 0, 'dmg'); }
             }
         } else {
             if (Math.random()*100 <= card.acc) {
-                if(card.atk) { s.players[tIdx].hp -= card.atk; log += `${s.players[tIdx].name}に${card.atk}ダメ`; triggerEffect(tIdx, card.atk, 'dmg'); if(s.players[tIdx].hp <= 0) s.players[tIdx].isDead = true; }
+                if(card.atk) { 
+                    s.players[tIdx].hp = Math.max(0, s.players[tIdx].hp - card.atk); // HP下限ガード
+                    log += `${s.players[tIdx].name}に${card.atk}ダメ`; 
+                    triggerEffect(tIdx, card.atk, 'dmg'); if(s.players[tIdx].hp <= 0) s.players[tIdx].isDead = true;
+                }
                 if(card.heal) { attacker.hp = Math.min(100, attacker.hp + card.heal); log += `HP${card.heal}回復`; triggerEffect(aIdx, card.heal, 'heal'); }
             } else { if(card.atk) triggerEffect(tIdx, 0, 'dmg'); log += `外れた！`; }
         }
@@ -198,7 +205,12 @@ function App() {
         }
 
         if (!s.winner) {
-            attacker.hand[cIdx] = (cIdx < 3) ? {...BASICS[cIdx]} : RANDOM_POOL[Math.floor(Math.random()*RANDOM_POOL.length)];
+            if (cIdx < 3) attacker.hand[cIdx] = {...BASICS[cIdx]};
+            else {
+                // 重複なし・毎回シャッフルでの補充
+                const drawn = drawUniqueCards(attacker.hand, 1);
+                attacker.hand[cIdx] = drawn[0];
+            }
             let next = aIdx; do { next = (next + 1) % s.players.length; } while (s.players[next].isDead);
             s.turn = next;
         }
@@ -207,9 +219,44 @@ function App() {
         if (mode === 'online' && channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: s } });
     };
 
-    const startGame = () => { if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); const startS = { ...gameState, players: gameState.players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), version: 1, winner: null }; setGameState(startS); if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: startS } }); setView('game'); };
-    const startLocalGame = () => { setMode('local'); const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat); const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: myTeam, peerId: 'local0' }]; for (let i = 0; i < count - 1; i++) { players.push({ name: localPlayers[i].name || `プレイヤー${i+2}`, hp: 100, mp: 5, isDead: false, team: localPlayers[i].team, peerId: `local${i+1}` }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), turn: 0, log: "ローカル戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
-    const startCPUMame = () => { setMode('cpu'); const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat); const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: 0, peerId: 'me', isCPU: false }]; for (let i = 1; i < count; i++) { const cpuTeam = battleFormat === '2v2' ? (i % 2) : i; players.push({ name: `CPU_${i}`, hp: 100, mp: 5, isDead: false, team: cpuTeam, peerId: `cpu${i}`, isCPU: true }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)]})), turn: 0, log: "CPU戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
+    const startGame = () => { 
+        if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); 
+        const startS = { ...gameState, players: gameState.players.map(p=>{
+            const randoms = drawUniqueCards([], 3); // 初期手札もユニーク
+            return {...p, hand: [...BASICS, ...randoms]};
+        }), version: 1, winner: null };
+        setGameState(startS);
+        if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: startS } });
+        setView('game');
+    };
+
+    const startLocalGame = () => {
+        setMode('local');
+        const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat);
+        const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: myTeam, peerId: 'local0' }];
+        for (let i = 0; i < count - 1; i++) { players.push({ name: localPlayers[i].name || `プレイヤー${i+2}`, hp: 100, mp: 5, isDead: false, team: localPlayers[i].team, peerId: `local${i+1}` }); }
+        setGameState({ players: players.map(p=>{
+            const randoms = drawUniqueCards([], 3);
+            return {...p, hand: [...BASICS, ...randoms]};
+        }), turn: 0, log: "ローカル戦開始！", version: 1, winner: null, battleFormat });
+        setView('game');
+    };
+
+    const startCPUMame = () => {
+        setMode('cpu');
+        const count = battleFormat === '2v2' ? 4 : parseInt(battleFormat);
+        const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: 0, peerId: 'me', isCPU: false }];
+        for (let i = 1; i < count; i++) {
+            const cpuTeam = battleFormat === '2v2' ? (i % 2) : i; 
+            players.push({ name: `CPU_${i}`, hp: 100, mp: 5, isDead: false, team: cpuTeam, peerId: `cpu${i}`, isCPU: true });
+        }
+        setGameState({ players: players.map(p=>{
+            const randoms = drawUniqueCards([], 3);
+            return {...p, hand: [...BASICS, ...randoms]};
+        }), turn: 0, log: "CPU戦開始！", version: 1, winner: null, battleFormat });
+        setView('game');
+    };
+
     const returnToMenu = () => { if (channelRef.current && sb) sb.removeChannel(channelRef.current); if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); setGameState({ players: [], turn: 0, log: "便所へようこそ。", version: 0, winner: null }); setView('modeSelect'); };
 
     return (
@@ -222,7 +269,7 @@ function App() {
             )}
             {view === 'modeSelect' && (
                 <div className="flex-1 flex flex-col items-center justify-center font-black">
-                    <h2 className="text-2xl font-bold text-yellow-500 mb-8 text-center uppercase tracking-widest font-black">トイレ選択</h2>
+                    <h2 className="text-2xl font-bold text-yellow-500 mb-8 text-center font-black">トイレ選択</h2>
                     <div className="w-full space-y-4 font-black">
                         <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-5 rounded-2xl font-bold text-xl transition active:scale-95">ローカルでトイレ</button>
                         <button onClick={() => setView('cpuSetup')} className="w-full bg-stone-600 p-5 rounded-2xl font-bold text-xl transition active:scale-95">CPUとトイレ</button>
@@ -259,7 +306,7 @@ function App() {
             )}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6 font-black">
-                    <div className="flex justify-between items-end mb-6 font-black"><h2 className="text-2xl font-bold text-yellow-500 uppercase tracking-widest">便所一覧</h2><button onClick={()=>{setIsRefreshing(true); setTimeout(()=>setIsRefreshing(false), 1000);}} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition shadow-sm"><span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span><span>捜索</span></button></div>
+                    <div className="flex justify-between items-end mb-6 font-black"><h2 className="text-2xl font-bold text-yellow-500 uppercase">便所一覧</h2><button onClick={()=>{setIsRefreshing(true); setTimeout(()=>setIsRefreshing(false), 1000);}} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition shadow-sm"><span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span><span>捜索</span></button></div>
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5 text-center shadow-inner">
                         <select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="w-full bg-[#3e2723] p-2 rounded-lg mb-2 font-bold text-xs text-center"><option value="2p">2人</option><option value="3p">3人</option><option value="4p">4人(うんちロワイヤル)</option><option value="2v2">4人(チーム戦)</option></select>
                         <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm text-center font-bold outline-none" placeholder="部屋名を入力" />
@@ -284,12 +331,12 @@ function App() {
                 <div className="flex-1 flex flex-col items-center justify-center font-black text-center">
                     <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5 font-bold"><h2 className="text-xl font-bold mb-6 text-yellow-500 tracking-widest uppercase italic font-black">待機中</h2>
                         <div className="space-y-3">{gameState.players.map((p,i) => (
-                            <div key={i} className="flex items-center gap-2 p-3 bg-white/5 rounded-xl border border-white/5"><div className="flex-1 text-xl font-bold text-left font-black">{p.name} {i===0 && '👑'}</div>
-                                {gameState.battleFormat === '2v2' && <button disabled={mode === 'online' && p.peerId !== myId.current} onClick={() => { if(mode === 'online') { changeOnlineTeam(p.team === 0 ? 1 : 0); } else { setGameState(prev => { let c = [...prev.players]; c[i].team = c[i].team===0?1:0; return {...prev, players:c}; }); } }} className={`px-3 py-1 rounded font-black text-xs ${p.team === 0 ? 'badge-a' : 'badge-b'}`}>Team {p.team === 0 ? 'A' : 'B'}</button>}
+                            <div key={i} className="flex items-center gap-2 p-3 bg-white/5 rounded-xl border border-white/5"><div className="flex-1 text-xl font-bold text-left">{p.name} {i===0 && '👑'}</div>
+                                {gameState.battleFormat === '2v2' && <button disabled={mode === 'online' && p.peerId !== myId.current} onClick={() => { if(mode === 'online') { channelRef.current.send({ type: 'broadcast', event: 'team_change', payload: { id: p.peerId, team: p.team === 0 ? 1 : 0 } }); } else { setGameState(prev => { let c = [...prev.players]; c[i].team = c[i].team===0?1:0; return {...prev, players:c}; }); } }} className={`px-3 py-1 rounded font-black text-xs ${p.team === 0 ? 'badge-a' : 'badge-b'}`}>Team {p.team === 0 ? 'A' : 'B'}</button>}
                             </div>
                         ))}</div>
                     </div>
-                    {isHost.current ? <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl font-black font-black">トイレに行く</button> : <p className="animate-pulse text-yellow-500 font-bold font-black">主がトイレに行くのを待っています...</p>}
+                    {isHost.current ? <button onClick={startGame} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-2xl font-black">トイレに行く</button> : <p className="animate-pulse text-yellow-500 font-bold font-black">主がトイレに行くのを待っています...</p>}
                     <button onClick={returnToMenu} className="text-white/30 text-xs mt-10 underline font-bold uppercase">退出する</button>
                 </div>
             )}
@@ -327,16 +374,16 @@ function App() {
             )}
             {targetOverlay !== null && (
                 <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center animate-in fade-in font-black"><h2 className="text-xl font-bold mb-6 text-yellow-500 uppercase tracking-widest italic font-black">ターゲット選択</h2>
-                    <div className="w-full space-y-3 font-bold max-h-[70vh] overflow-y-auto px-2 font-black">{gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (<button key={i} onClick={() => { if (mode !== 'online' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else if(channelRef.current) channelRef.current.send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i }); setTargetOverlay(null); }} className={`w-full p-4 rounded-2xl text-lg active:scale-95 transition border-2 ${gameState.battleFormat === '2v2' ? (p.team === 0 ? 'border-red-500 bg-red-900/40' : 'border-blue-500 bg-blue-900/40') : 'bg-yellow-600 text-black border-transparent font-black'}`}>{p.name} {gameState.battleFormat === '2v2' ? `(Team ${p.team===0?'A':'B'})` : ''}</button>))}<button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 text-xs font-bold underline font-black">キャンセル</button></div>
+                    <div className="w-full space-y-3 font-bold max-h-[70vh] overflow-y-auto px-2 font-black">{gameState.players.map((p, i) => (!p.isDead && i !== gameState.turn) && (<button key={i} onClick={() => { if (mode !== 'online' || isHost.current) processBattle(gameState.turn, targetOverlay, i); else if(channelRef.current) channelRef.current.send({ type:'ACTION', aIdx:gameState.turn, cIdx:targetOverlay, tIdx:i }); setTargetOverlay(null); }} className={`w-full p-4 rounded-2xl text-lg active:scale-95 transition border-2 ${gameState.battleFormat === '2v2' ? (p.team === 0 ? 'border-red-500 bg-red-900/40' : 'border-blue-500 bg-blue-900/40') : 'bg-yellow-600 text-black border-transparent'}`}>{p.name} {gameState.battleFormat === '2v2' ? `(Team ${p.team===0?'A':'B'})` : ''}</button>))}<button onClick={()=>setTargetOverlay(null)} className="w-full py-4 text-white/50 text-xs font-bold underline font-black">キャンセル</button></div>
                 </div>
             )}
             {gameState.winner && (
-                <div className="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center p-6 text-center backdrop-blur-md animate-in zoom-in duration-500 font-black">
-                    <div className="text-6xl mb-4 animate-bounce font-black">🏆</div>
-                    <h2 className="text-3xl font-black text-yellow-500 mb-2 uppercase italic font-black">勝負あり！</h2>
-                    <p className={`text-2xl font-black mb-2 ${gameState.winner.includes('A') ? 'text-red-400' : (gameState.winner.includes('B') ? 'text-blue-400' : 'text-yellow-400')}`}>{gameState.winner}の勝利！</p>
+                <div className="fixed inset-0 bg-black/70 z-[200] flex flex-col items-center justify-end pb-24 p-6 text-center backdrop-blur-sm animate-in zoom-in duration-500 font-black">
+                    <div className="text-7xl mb-4 animate-bounce">🏆</div>
+                    <h2 className="text-4xl font-black text-yellow-500 mb-2 uppercase italic font-black">勝負あり！</h2>
+                    <p className={`text-3xl font-black mb-2 ${gameState.winner.includes('A') ? 'text-red-400' : (gameState.winner.includes('B') ? 'text-blue-400' : 'text-yellow-400')}`}>{gameState.winner}の勝利！</p>
                     {gameState.battleFormat === '2v2' && (
-                        <div className="text-xs font-bold opacity-80 mb-10 bg-white/5 px-6 py-2 rounded-full border border-white/10 italic font-black">
+                        <div className="text-sm font-bold opacity-90 mb-10 bg-white/10 px-6 py-2 rounded-full border border-white/20 italic font-black">
                             参加者: {gameState.players.filter(p => (gameState.winner === "Aチーム" || gameState.winner === "Aチームの勝利" ? p.team === 0 : p.team === 1)).map(p => p.name).join(' & ')}
                         </div>
                     )}

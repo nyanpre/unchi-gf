@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNCHI GF: Final Edition</title>
+    <title>UNCHI GF: Absolute Edition</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -21,7 +21,6 @@
         .p-card-bg { background: rgba(0, 0, 0, 0.2); }
         .p-card-active { background: rgba(255, 235, 59, 0.15); border-color: #ffeb3b; }
         
-        /* エフェクト用アニメーション */
         @keyframes float-up { 
             0% { opacity: 0; transform: translateY(0); } 
             20% { opacity: 1; } 
@@ -58,6 +57,8 @@ function App() {
     const [gameState, setGameState] = useState({ players: [], turn: 0, log: "便所へようこそ。", version: 0 });
     const [rooms, setRooms] = useState({});
     const [myName, setMyName] = useState('あらい');
+    const [localNames, setLocalNames] = useState(['ひまだ', 'やまさん', 'さく']);
+    const [localPlayerCount, setLocalPlayerCount] = useState(3);
     const [roomName, setRoomName] = useState('あらいの便所');
     const [targetOverlay, setTargetOverlay] = useState(null);
     const [effects, setEffects] = useState([]);
@@ -68,14 +69,12 @@ function App() {
     const isHost = useRef(false);
     const currentRoomId = useRef(null);
 
-    // エフェクト発動
     const triggerEffect = (id, val, type) => {
         const key = Math.random();
         setEffects(prev => [...prev, { id, val, type, key }]);
         setTimeout(() => setEffects(prev => prev.filter(e => e.key !== key)), 1000);
     };
 
-    // ロビー管理
     useEffect(() => {
         const timer = setInterval(() => {
             gun.current.get('ugf-lobby-final-2026').map().once((data, key) => {
@@ -89,14 +88,13 @@ function App() {
         return () => clearInterval(timer);
     }, []);
 
-    // 退出処理
     const deleteRoom = () => { if (isHost.current && currentRoomId.current) gun.current.get('ugf-lobby-final-2026').get(currentRoomId.current).put(null); };
 
-    // ゲーム開始
+    // --- ローカル設定画面 ---
     const startLocalGame = () => {
         setMode('local'); isHost.current = true;
-        const pNames = [myName, "ひまだ", "やまさん"];
-        const initPlayers = pNames.map(name => ({ name, hp: 100, mp: 5, isDead: false, hand: [...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)], peerId: 'local' }));
+        const allNames = [myName, ...localNames].slice(0, localPlayerCount);
+        const initPlayers = allNames.map(name => ({ name: name || "名無し", hp: 100, mp: 5, isDead: false, hand: [...BASICS, ...RANDOM_POOL.sort(()=>0.5-Math.random()).slice(0,3)], peerId: 'local' }));
         setGameState({ players: initPlayers, turn: 0, log: "ローカル戦開始！", version: 1 });
         setView('game');
     };
@@ -141,7 +139,7 @@ function App() {
             if (data.type === 'SYNC') {
                 setGameState(data.state);
                 if (data.eff) triggerEffect(data.eff.id, data.eff.val, data.eff.type);
-                if (data.state.version === 1) setView('game');
+                if (data.state.version === 1 && view === 'waiting') setView('game');
             }
         }
     };
@@ -190,9 +188,33 @@ function App() {
                 <div className="flex-1 flex flex-col items-center justify-center">
                     <h1 className="text-5xl font-black text-yellow-500 mb-12 drop-shadow-lg">UNCHI GF</h1>
                     <div className="w-full space-y-4 text-center">
-                        <input value={myName} onChange={e=>setMyName(e.target.value)} className="w-full bg-white/10 p-4 rounded-2xl text-center" placeholder="名前" />
-                        <button onClick={startLocalGame} className="w-full bg-white/10 p-4 rounded-2xl font-bold">ローカルで遊ぶ</button>
-                        <button onClick={()=>setView('lobby')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">オンライン対戦</button>
+                        <button onClick={() => setView('localSetup')} className="w-full bg-white/10 p-4 rounded-2xl font-bold hover:bg-white/20 transition">ローカルで遊ぶ</button>
+                        <button onClick={() => setView('lobby')} className="w-full bg-yellow-600 text-black font-bold p-5 rounded-2xl card-shadow text-xl">オンライン対戦</button>
+                    </div>
+                </div>
+            )}
+
+            {/* --- ローカル設定画面 (絶対に変えない画面) --- */}
+            {view === 'localSetup' && (
+                <div id="setup-screen" className="flex-1 flex flex-col items-center justify-center p-4">
+                    <h1 className="text-2xl font-black text-yellow-500 mb-6">💩 ローカル設定</h1>
+                    <div className="w-full space-y-4 text-center">
+                        <div>
+                            人数：
+                            <select value={localPlayerCount} onChange={e => setLocalPlayerCount(parseInt(e.target.value))} className="bg-white/10 p-2 rounded-lg ml-2">
+                                <option value="2">2人</option>
+                                <option value="3">3人</option>
+                                <option value="4">4人</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <input value={myName} onChange={e => setMyName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player1" />
+                            <input value={localNames[0]} onChange={e => setLocalNames([e.target.value, localNames[1], localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player2" />
+                            {localPlayerCount >= 3 && <input value={localNames[1]} onChange={e => setLocalNames([localNames[0], e.target.value, localNames[2]])} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player3" />}
+                            {localPlayerCount >= 4 && <input value={localNames[2]} onChange={e => setLocalNames([localNames[0], localNames[1], e.target.value])} className="w-full bg-white/10 p-3 rounded-xl text-center" placeholder="Player4" />}
+                        </div>
+                        <button onClick={startLocalGame} className="w-full bg-yellow-600 text-black font-bold p-4 rounded-2xl card-shadow text-xl">開戦</button>
+                        <button onClick={() => setView('menu')} className="text-white/50 text-sm">戻る</button>
                     </div>
                 </div>
             )}
@@ -231,7 +253,6 @@ function App() {
                             </div>
                         ))}
                     </div>
-                    {/* メッセージウィンドウを茶色ベース(#3e2723)に修正 */}
                     <div className="bg-[#3e2723] p-4 rounded-2xl h-24 text-xs border-l-4 border-yellow-600 overflow-y-auto mb-4" dangerouslySetInnerHTML={{__html: gameState.log}}></div>
                     <div className="grid grid-cols-3 gap-2">
                         {gameState.players[gameState.turn]?.hand.map((c, i) => {
@@ -242,7 +263,7 @@ function App() {
                                     onClick={() => { if(c.atk && !c.multi) setTargetOverlay(i); else processBattle(gameState.turn, i, gameState.turn); }}
                                     className={`h-28 rounded-xl flex flex-col items-center justify-center p-2 text-center card-shadow transition-all ${i<3?'bg-stone-100 text-stone-800':'bg-yellow-100 text-stone-800'} ${(!isMyTurn || !canPay)?'opacity-20 grayscale':''}`}>
                                     <div className="text-[11px] font-black leading-tight mb-1">{c.name}</div>
-                                    <div className="text-[9px] opacity-70 font-bold">
+                                    <div className="text-[9px] opacity-70 font-bold text-left w-full pl-1">
                                         {c.atk > 0 && `威力: ${c.atk} `}{c.heal > 0 && `回復: ${c.heal} `}{c.mpRec > 0 && `MP: +${c.mpRec} `}<br/>命中: {c.acc}%
                                     </div>
                                     <div className="text-[9px] font-bold text-blue-700 mt-1">消費MP: {c.mp < 0 ? Math.abs(c.mp) : '0'}</div>

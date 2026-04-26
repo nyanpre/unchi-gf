@@ -88,8 +88,9 @@ function App() {
         init();
     }, []);
 
-    useEffect(() => {
+    const initLobby = () => {
         if (!sb) return;
+        if (lobbyChannelRef.current) lobbyChannelRef.current.unsubscribe();
         const lobbyChannel = sb.channel('unchi-lobby', { config: { presence: { key: myId.current } } });
         lobbyChannelRef.current = lobbyChannel;
         lobbyChannel.on('presence', { event: 'sync' }, () => {
@@ -100,8 +101,18 @@ function App() {
             });
             setRooms(activeRooms);
         }).subscribe();
-        return () => { lobbyChannel.unsubscribe(); };
+    };
+
+    useEffect(() => {
+        if (sb) initLobby();
+        return () => { if (lobbyChannelRef.current) lobbyChannelRef.current.unsubscribe(); };
     }, [sb]);
+
+    const refreshLobby = async () => {
+        setIsRefreshing(true);
+        initLobby();
+        setTimeout(() => setIsRefreshing(false), 1000);
+    };
 
     const drawUniqueCards = (currentHand, count) => {
         const currentNames = (currentHand || []).filter(c => c).map(c => c.name);
@@ -306,7 +317,7 @@ function App() {
             )}
             {view === 'lobby' && (
                 <div className="flex-1 flex flex-col py-6 font-black">
-                    <div className="flex justify-between items-end mb-6 font-black"><h2 className="text-2xl font-bold text-yellow-500 uppercase font-black">便所一覧</h2><button onClick={()=>{setIsRefreshing(true); setTimeout(()=>setIsRefreshing(false), 1000);}} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition shadow-sm font-black"><span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span><span>捜索</span></button></div>
+                    <div className="flex justify-between items-end mb-6 font-black"><h2 className="text-2xl font-bold text-yellow-500 uppercase font-black">便所一覧</h2><button onClick={refreshLobby} className="bg-[#3e2723] border border-yellow-600 px-4 py-2 rounded-xl text-xs flex items-center gap-3 active:scale-95 transition shadow-sm font-black"><span className={`text-2xl ${isRefreshing ? 'animate-unchi-spin' : ''}`}>💩</span><span>捜索</span></button></div>
                     <div className="bg-white/5 p-4 rounded-2xl mb-6 space-y-3 border border-white/5 text-center shadow-inner font-black">
                         <select value={battleFormat} onChange={e => setBattleFormat(e.target.value)} className="w-full bg-[#3e2723] p-2 rounded-lg mb-2 font-bold text-xs text-center font-black"><option value="2p">2人</option><option value="3p">3人</option><option value="4p">4人(うんちロワイヤル)</option><option value="2v2">4人(チーム戦)</option></select>
                         <input value={roomName} onChange={e=>setRoomName(e.target.value)} className="w-full bg-white/10 p-3 rounded-xl text-sm text-center font-bold outline-none font-black" placeholder="トイレ名を入力" />

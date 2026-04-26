@@ -152,7 +152,7 @@ function App() {
             if (isHost.current) {
                 setGameState(prev => {
                     if (prev.players.some(p => p.peerId === payload.id)) return prev;
-                    const nextP = [...prev.players, { name: payload.name, hp: 100, mp: 5, isDead: false, hand: [], peerId: payload.id, team: payload.team }];
+                    const nextP = [...prev.players, { name: payload.name, hp: 150, mp: 5, isDead: false, hand: [], peerId: payload.id, team: payload.team }];
                     const nextS = { ...prev, players: nextP, version: prev.version + 1 };
                     channel.send({ type: 'broadcast', event: 'sync', payload: { state: nextS } });
                     if (lobbyChannelRef.current) lobbyChannelRef.current.track({ isHost: true, hostName: myName, roomName: roomName || `${myName}のトイレ`, hostId: myId.current, format: battleFormat, currentCount: nextP.length });
@@ -171,7 +171,7 @@ function App() {
         }).subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
                 if (lobbyChannelRef.current) await lobbyChannelRef.current.track({ isHost: true, hostName: myName, roomName: roomName || `${myName}のトイレ`, hostId: myId.current, format: battleFormat, currentCount: 1 });
-                setGameState({ players: [{ name: myName, hp: 100, mp: 5, isDead: false, hand: [], peerId: myId.current, team: myTeam }], turn: 0, log: "参加者を待っています...", version: 0, winner: null, battleFormat: battleFormat });
+                setGameState({ players: [{ name: myName, hp: 150, mp: 5, isDead: false, hand: [], peerId: myId.current, team: myTeam }], turn: 0, log: "参加者を待っています...", version: 0, winner: null, battleFormat: battleFormat });
                 setView('waiting');
             }
         });
@@ -199,6 +199,7 @@ function App() {
         attacker.mp += (card.mp || 0);
         
         let log = `【${attacker.name}】の${card.name}！`; // 以前ここが turnLog だったのを修正
+        if (card.name === "野グソ") log += "<br>はしたない！";
         
         if (card.mpRec) { attacker.mp = Math.min(10, attacker.mp + card.mpRec); triggerEffect(aIdx, card.mpRec, 'mp'); }
         if (card.multi) {
@@ -220,7 +221,7 @@ function App() {
                     log += `<br>→${s.players[tIdx].name}に${card.atk}ダメ`;
                     triggerEffect(tIdx, card.atk, 'dmg'); if(s.players[tIdx].hp <= 0) s.players[tIdx].isDead = true; 
                 }
-                if(card.heal) { attacker.hp = Math.min(100, attacker.hp + card.heal); log += `<br>→HPを${card.heal}回復`; triggerEffect(aIdx, card.heal, 'heal'); }
+                if(card.heal) { attacker.hp = Math.min(150, attacker.hp + card.heal); log += `<br>→HPを${card.heal}回復`; triggerEffect(aIdx, card.heal, 'heal'); }
             } else { if(card.atk) triggerEffect(tIdx, 0, 'dmg'); log += `<br>→外れた！`; }
         }
         
@@ -247,14 +248,14 @@ function App() {
 
     const startGame = () => { 
         if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); 
-        const startS = { ...stateRef.current, players: stateRef.current.players.map(p=>({...p, hp: 100, hand: [...BASICS, ...drawUniqueCards([], 3)]})), version: 1, winner: null, log: "トイレ大戦、開幕！" };
+        const startS = { ...stateRef.current, players: stateRef.current.players.map(p=>({...p, hp: 150, hand: [...BASICS, ...drawUniqueCards([], 3)]})), version: 1, winner: null, log: "トイレ大戦、開幕！" };
         setGameState(startS);
         if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: startS } });
         setView('game');
     };
 
-    const startLocalGame = () => { setMode('local'); const count = getRequiredCount(battleFormat); const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: myTeam, peerId: 'local0' }]; for (let i = 0; i < count - 1; i++) { players.push({ name: localPlayers[i].name || `プレイヤー${i+2}`, hp: 100, mp: 5, isDead: false, team: localPlayers[i].team, peerId: `local${i+1}` }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...drawUniqueCards([], 3)]})), turn: 0, log: "ローカル戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
-    const startCPUMame = () => { setMode('cpu'); const count = getRequiredCount(battleFormat); const players = [{ name: myName, hp: 100, mp: 5, isDead: false, team: 0, peerId: 'me', isCPU: false }]; for (let i = 1; i < count; i++) { const cpuTeam = battleFormat === '2v2' ? (i % 2) : i; players.push({ name: `CPU_${i}`, hp: 100, mp: 5, isDead: false, team: cpuTeam, peerId: `cpu${i}`, isCPU: true }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...drawUniqueCards([], 3)]})), turn: 0, log: "CPU戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
+    const startLocalGame = () => { setMode('local'); const count = getRequiredCount(battleFormat); const players = [{ name: myName, hp: 150, mp: 5, isDead: false, team: myTeam, peerId: 'local0' }]; for (let i = 0; i < count - 1; i++) { players.push({ name: localPlayers[i].name || `プレイヤー${i+2}`, hp: 150, mp: 5, isDead: false, team: localPlayers[i].team, peerId: `local${i+1}` }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...drawUniqueCards([], 3)]})), turn: 0, log: "ローカル戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
+    const startCPUMame = () => { setMode('cpu'); const count = getRequiredCount(battleFormat); const players = [{ name: myName, hp: 150, mp: 5, isDead: false, team: 0, peerId: 'me', isCPU: false }]; for (let i = 1; i < count; i++) { const cpuTeam = battleFormat === '2v2' ? (i % 2) : i; players.push({ name: `CPU_${i}`, hp: 150, mp: 5, isDead: false, team: cpuTeam, peerId: `cpu${i}`, isCPU: true }); } setGameState({ players: players.map(p=>({...p, hand:[...BASICS, ...drawUniqueCards([], 3)]})), turn: 0, log: "CPU戦開始！", version: 1, winner: null, battleFormat }); setView('game'); };
     const returnToMenu = () => { if (channelRef.current && sb) sb.removeChannel(channelRef.current); if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); setGameState({ players: [], turn: 0, log: "トイレへようこそ。", version: 0, winner: null }); setView('modeSelect'); };
     const getRequiredCount = (fmt) => fmt === '2v2' ? 4 : parseInt(fmt);
 
@@ -350,7 +351,7 @@ function App() {
                             <div key={i} className={`w-[47%] h-[82px] p-2 rounded-2xl border-2 transition-all relative ${gameState.turn === i ? 'p-card-active scale-105' : 'border-transparent p-card-bg'} ${p.isDead ? 'opacity-20' : ''} ${gameState.battleFormat === '2v2' ? (p.team === 0 ? 'team-a' : 'team-b') : ''}`}>
                                 <div className="font-bold truncate text-[10px] flex justify-between font-black"><span>{p.name}</span><span>{i===0?'👑':''}</span></div>
                                 <div className="flex justify-between text-[8px] opacity-70 font-mono font-bold tracking-tighter font-black"><span>HP:{p.hp}</span><span>MP:{p.mp}</span></div>
-                                <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden"><div className="h-full bg-green-500 transition-all duration-500" style={{width:p.hp+'%'}}></div></div>
+                                <div className="h-1.5 bg-black/40 rounded-full mt-1 overflow-hidden"><div className="h-full bg-green-500 transition-all duration-500" style={{width:(p.hp/1.5)+'%'}}></div></div>
                                 <div className="h-1 bg-black/40 rounded-full mt-0.5 overflow-hidden"><div className="h-full bar-mp transition-all duration-500" style={{width:(p.mp * 10)+'%'}}></div></div>
                                 {effects.filter(e => e.id === i).map(e => (<div key={e.key} className={`absolute inset-0 flex items-center justify-center font-black text-2xl z-50 animate-float-up pointer-events-none drop-shadow-lg ${e.type === 'dmg' ? 'text-red-500' : (e.type === 'heal' ? 'text-green-400' : 'text-blue-400')}`}>{e.type === 'dmg' ? '-' : '+'}{e.val}</div>))}
                                 {gameState.battleFormat === '2v2' && <div className={`absolute -top-1 -left-1 text-[8px] px-1 rounded-full font-black ${p.team===0?'badge-a':'badge-b'}`}>{p.team===0?'A':'B'}</div>}

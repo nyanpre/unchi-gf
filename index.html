@@ -75,6 +75,14 @@ function App() {
     const stateRef = useRef(gameState);
     useEffect(() => { stateRef.current = gameState; }, [gameState]);
 
+    const modeRef = useRef(mode);
+    useEffect(() => { modeRef.current = mode; }, [mode]);
+
+    const viewRef = useRef(view);
+    useEffect(() => { viewRef.current = view; }, [view]);
+
+    const processBattleRef = useRef(null);
+
     useEffect(() => {
         const init = () => { if (window.supabase) setSb(window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)); else setTimeout(init, 500); };
         init();
@@ -139,7 +147,7 @@ function App() {
         channelRef.current = channel;
         
         channel.on('broadcast', { event: 'action' }, ({ payload }) => { 
-            if (isHost.current) processBattle(payload.aIdx, payload.cIdx, payload.tIdx); 
+            if (isHost.current && processBattleRef.current) processBattleRef.current(payload.aIdx, payload.cIdx, payload.tIdx); 
         }).on('broadcast', { event: 'join' }, ({ payload }) => {
             if (isHost.current) {
                 setGameState(prev => {
@@ -178,7 +186,7 @@ function App() {
         channel.on('broadcast', { event: 'sync' }, ({ payload }) => {
             setGameState(payload.state);
             if (payload.eff) triggerEffect(payload.eff.id, payload.eff.val, payload.eff.type);
-            if (payload.state.version >= 1 && view !== 'game') setView('game');
+            if (payload.state.version >= 1 && viewRef.current !== 'game') setView('game');
         }).subscribe((status) => { if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'join', payload: { name: myName, id: myId.current, team: myTeam } }); setView('waiting'); } });
     };
 
@@ -232,8 +240,10 @@ function App() {
             s.turn = next;
         }
         s.log = log; s.version += 1; setGameState(s);
-        if (mode === 'online' && channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: s } });
+        if (modeRef.current === 'online' && channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'sync', payload: { state: s } });
     };
+
+    useEffect(() => { processBattleRef.current = processBattle; });
 
     const startGame = () => { 
         if (lobbyChannelRef.current) lobbyChannelRef.current.untrack(); 
@@ -320,7 +330,7 @@ function App() {
             )}
             {view === 'waiting' && (
                 <div className="flex-1 flex flex-col items-center justify-center text-center font-black">
-                    <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5 font-bold font-black font-black"><h2 className="text-xl font-bold mb-6 text-yellow-500 tracking-widest uppercase italic font-black font-black">待機中</h2>
+                    <div className="w-full bg-black/20 rounded-3xl p-8 mb-8 text-center border border-white/5 font-bold font-black font-black"><h2 className="text-xl font-bold mb-6 text-yellow-500 tracking-widest uppercase italic font-black font-black font-black font-black">待機中</h2>
                         <div className="space-y-3 font-black font-black">{gameState.players.map((p,i) => (
                             <div key={i} className="flex items-center gap-2 p-3 bg-white/5 rounded-xl border border-white/5 font-black font-black"><div className="flex-1 text-xl font-bold text-left font-black font-black">{p.name} {i===0 && '👑'}</div>
                                 {gameState.battleFormat === '2v2' && <button disabled={mode === 'online' && p.peerId !== myId.current} onClick={() => { if(mode === 'online') { channelRef.current.send({ type: 'broadcast', event: 'team_change', payload: { id: p.peerId, team: p.team === 0 ? 1 : 0 } }); } else { setGameState(prev => { let c = [...prev.players]; c[i].team = c[i].team===0?1:0; return {...prev, players:c}; }); } }} className={`px-3 py-1 rounded font-black text-xs font-black font-black ${p.team === 0 ? 'badge-a' : 'badge-b'}`}>Team {p.team === 0 ? 'A' : 'B'}</button>}
